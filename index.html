@@ -3,11 +3,11 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v11 (Robust)</title>
+        <title>Deepblu Cosmiq 5 Manager</title>
         <style>
             :root {
                 --blue: #007bff;
-                --red: #dc3545;
+                --green: #28a745;
                 --bg: #f8f9fa;
                 --text: #212529;
             }
@@ -36,29 +36,28 @@
                 margin-top: 5px;
             }
             .connected {
-                color: #28a745;
+                color: var(--green);
             }
 
             button {
                 cursor: pointer;
                 border: none;
                 outline: none;
-                transition: 0.1s;
                 font-weight: 600;
                 font-family: inherit;
             }
-
             .btn-main {
                 width: 100%;
-                padding: 12px;
-                border-radius: 8px;
+                padding: 14px;
+                border-radius: 10px;
                 font-size: 16px;
                 color: white;
                 background: var(--blue);
-                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                transition: 0.1s;
             }
             .btn-main:active {
-                transform: translateY(1px);
+                transform: scale(0.98);
             }
             .btn-disc {
                 background: #6c757d;
@@ -70,17 +69,18 @@
                 display: flex;
                 background: white;
                 padding: 5px;
-                border-radius: 8px;
+                border-radius: 10px;
                 margin-bottom: 15px;
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             }
             .tab {
                 flex: 1;
-                padding: 8px;
+                padding: 10px;
                 background: none;
                 color: #6c757d;
-                border-radius: 6px;
+                border-radius: 8px;
                 font-size: 14px;
+                transition: 0.2s;
             }
             .tab.active {
                 background: var(--blue);
@@ -89,9 +89,18 @@
 
             .section {
                 display: none;
+                animation: fadeIn 0.3s;
             }
             .section.active {
                 display: block;
+            }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                }
+                to {
+                    opacity: 1;
+                }
             }
 
             .card {
@@ -99,16 +108,14 @@
                 padding: 15px;
                 border-radius: 12px;
                 margin-bottom: 12px;
-                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-                position: relative;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             }
             .card h3 {
-                margin: 0 0 12px 0;
-                font-size: 14px;
+                margin: 0 0 15px 0;
+                font-size: 13px;
                 text-transform: uppercase;
                 color: #868e96;
-                letter-spacing: 0.5px;
-                border-bottom: 1px solid #f1f3f5;
+                border-bottom: 1px solid #eee;
                 padding-bottom: 8px;
             }
 
@@ -119,85 +126,80 @@
                 display: block;
                 color: #495057;
             }
-
             .grid {
                 display: grid;
                 grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
                 gap: 8px;
             }
+
             .btn-opt {
                 padding: 10px;
                 background: #f1f3f5;
                 border-radius: 6px;
                 color: #495057;
                 font-size: 13px;
-            }
-            .btn-opt:active {
-                background: #dee2e6;
-                color: black;
+                transition: 0.2s;
             }
             .btn-opt.selected {
-                background: #cce5ff;
-                color: #004085;
-                border: 1px solid #b8daff;
+                background: #e3f2fd;
+                color: var(--blue);
+                border: 1px solid #90caf9;
+            }
+            /* Flash animation for sync */
+            .synced {
+                animation: flashGreen 1s ease-out;
+            }
+            @keyframes flashGreen {
+                0% {
+                    background-color: #d4edda;
+                }
+                100% {
+                    background-color: transparent;
+                }
             }
 
             .row {
                 display: flex;
                 align-items: center;
                 gap: 10px;
-                margin-bottom: 10px;
+                margin-bottom: 15px;
             }
             input[type="range"] {
                 flex: 1;
             }
             input[type="number"] {
-                width: 50px;
-                padding: 5px;
+                width: 60px;
+                padding: 8px;
                 text-align: center;
                 border: 1px solid #ced4da;
-                border-radius: 4px;
+                border-radius: 6px;
+                font-weight: bold;
+                color: var(--blue);
             }
             .val {
                 font-family: monospace;
                 font-weight: bold;
-                width: 40px;
+                width: 45px;
                 text-align: right;
             }
             .btn-set {
-                padding: 6px 12px;
+                padding: 8px 16px;
                 background: var(--blue);
                 color: white;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-
-            .warn {
-                background: #fff3cd;
-                color: #856404;
-                padding: 10px;
                 border-radius: 6px;
-                font-size: 11px;
-                line-height: 1.4;
-                margin-bottom: 10px;
-                border: 1px solid #ffeeba;
-            }
-            .danger {
-                border-left: 3px solid var(--red);
+                font-size: 13px;
             }
 
             #log {
                 font-family: monospace;
                 font-size: 10px;
-                color: #ced4da;
+                color: #aaa;
                 margin-top: 30px;
-                text-align: left;
-                white-space: pre-wrap;
-                height: 150px;
+                text-align: center;
+                height: 80px;
                 overflow-y: scroll;
-                background: #212529;
-                padding: 10px;
-                border-radius: 8px;
+                border-top: 1px solid #eee;
+                padding-top: 10px;
             }
         </style>
     </head>
@@ -253,34 +255,31 @@
                         </button>
                     </div>
                     <div style="margin-top: 15px"></div>
-                    <span class="label">Units</span>
-                    <div class="grid" style="margin-bottom: 10px">
+                    <span class="label">Units & Date</span>
+                    <div class="grid">
                         <button
                             class="btn-opt"
                             onclick="sendStatic('#23da0201')"
                         >
-                            Metric (C/m)
+                            Metric
                         </button>
                         <button
                             class="btn-opt"
                             onclick="sendStatic('#23db0200')"
                         >
-                            Imperial (F/ft)
+                            Imperial
                         </button>
-                    </div>
-                    <span class="label">Date Format</span>
-                    <div class="grid">
                         <button
                             class="btn-opt"
                             onclick="sendStatic('#24da0200')"
                         >
-                            Current Date
+                            Now
                         </button>
                         <button
                             class="btn-opt"
                             onclick="sendStatic('#24d90201')"
                         >
-                            Last Dive Date
+                            Last Dive
                         </button>
                     </div>
                 </div>
@@ -295,10 +294,13 @@
                                 flex: 1;
                                 padding: 8px;
                                 border-radius: 6px;
-                                background: #f8f9fa;
-                                border: 1px solid #ddd;
+                                background: #fff;
+                                border: 1px solid #ced4da;
                             "
                         >
+                            <option value="0" disabled selected>
+                                -- Select --
+                            </option>
                             <option value="5">5 Seconds</option>
                             <option value="10">10 Seconds</option>
                             <option value="15">15 Seconds</option>
@@ -311,9 +313,7 @@
                             Set
                         </button>
                     </div>
-                    <span class="label" style="margin-top: 10px"
-                        >Backlight</span
-                    >
+                    <span class="label">Backlight</span>
                     <div class="grid" id="blGroup">
                         <button
                             class="btn-opt"
@@ -352,29 +352,6 @@
                         </button>
                     </div>
                 </div>
-
-                <div class="card danger">
-                    <h3 style="color: var(--red)">Advanced</h3>
-                    <span class="label">High Salinity Mode</span>
-                    <div class="warn">
-                        Use only in highly saline water. Normal water readings
-                        will be incorrect.
-                    </div>
-                    <div class="grid">
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#30cb040001')"
-                        >
-                            Enable
-                        </button>
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#30cc040000')"
-                        >
-                            Disable
-                        </button>
-                    </div>
-                </div>
             </div>
 
             <div id="scuba" class="section">
@@ -391,21 +368,21 @@
                             id="safe0"
                             onclick="setSafe(0, this)"
                         >
-                            Conservative
+                            Consv
                         </button>
                         <button
                             class="btn-opt"
                             id="safe1"
                             onclick="setSafe(1, this)"
                         >
-                            Normal
+                            Norm
                         </button>
                         <button
                             class="btn-opt"
                             id="safe2"
                             onclick="setSafe(2, this)"
                         >
-                            Progressive
+                            Prog
                         </button>
                     </div>
                     <span class="label">Max PPO2</span>
@@ -416,17 +393,17 @@
                             min="1.2"
                             max="1.6"
                             step="0.1"
-                            value="1.4"
+                            value="1.2"
                             oninput="upd('ppo2Val', this.value)"
                         />
-                        <span class="val" id="ppo2Val">1.4</span>
+                        <span class="val" id="ppo2Val">--</span>
                         <button class="btn-set" onclick="setPPO2()">Set</button>
                     </div>
                 </div>
 
                 <div class="card">
-                    <h3>Gas Mix</h3>
-                    <span class="label">Oxygen (O2%)</span>
+                    <h3>Gas</h3>
+                    <span class="label">Air Mix (O2 %)</span>
                     <div class="row">
                         <input
                             type="range"
@@ -437,7 +414,7 @@
                             value="21"
                             oninput="upd('airVal', this.value + '%')"
                         />
-                        <span class="val" id="airVal">21%</span>
+                        <span class="val" id="airVal">--</span>
                         <button class="btn-set" onclick="setAir()">Set</button>
                     </div>
                 </div>
@@ -445,19 +422,15 @@
                 <div class="card">
                     <h3>Alarms</h3>
                     <div class="row">
-                        <span style="font-size: 13px; flex: 1"
-                            >Depth (Meters)</span
-                        >
-                        <input type="number" id="scubaDepth" value="40" />
+                        <span style="font-size: 13px; flex: 1">Depth (m)</span>
+                        <input type="number" id="scubaDepth" placeholder="--" />
                         <button class="btn-set" onclick="setScubaDepth()">
                             Set
                         </button>
                     </div>
                     <div class="row">
-                        <span style="font-size: 13px; flex: 1"
-                            >Time (Minutes)</span
-                        >
-                        <input type="number" id="scubaTime" value="30" />
+                        <span style="font-size: 13px; flex: 1">Time (min)</span>
+                        <input type="number" id="scubaTime" placeholder="--" />
                         <button class="btn-set" onclick="setScubaTime()">
                             Set
                         </button>
@@ -468,8 +441,8 @@
             <div id="free" class="section">
                 <div class="card">
                     <h3>Alarms</h3>
-                    <span class="label">Max Dive Time (Seconds)</span>
-                    <div class="row" style="margin-bottom: 15px">
+                    <span class="label">Max Time (Seconds)</span>
+                    <div class="row" style="margin-bottom: 20px">
                         <input
                             type="range"
                             id="fdTimeRange"
@@ -479,28 +452,28 @@
                             value="60"
                             oninput="upd('fdTimeVal', this.value + 's')"
                         />
-                        <span class="val" id="fdTimeVal">60s</span>
+                        <span class="val" id="fdTimeVal">--</span>
                         <button class="btn-set" onclick="setFdTime()">
                             Set
                         </button>
                     </div>
 
-                    <span class="label">Depth Alarms (Set 0 to disable)</span>
+                    <span class="label">Depth Alarms (m)</span>
                     <div id="fdAlarms"></div>
                 </div>
             </div>
         </div>
 
-        <div id="log">Logs will appear here...</div>
+        <div id="log">Ready.</div>
 
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
 
-            // UI Setup
+            // UI Generation
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
-                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i} (m)</span><input type="number" id="fd${i}" value="${i * 10}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
             function tab(id) {
@@ -518,11 +491,11 @@
             }
             function log(m) {
                 console.log(m);
-                const logEl = document.getElementById("log");
-                logEl.innerText += "\n" + m;
-                logEl.scrollTop = logEl.scrollHeight;
+                const el = document.getElementById("log");
+                el.innerText = "> " + m + "\n" + el.innerText;
             }
 
+            // CONNECT
             async function connect() {
                 try {
                     log("Scanning...");
@@ -538,6 +511,7 @@
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
 
+                    // Smart Discovery
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
@@ -549,7 +523,7 @@
                     }
 
                     if (!txChar || !rxChar)
-                        throw new Error("Missing TX/RX chars.");
+                        throw new Error("Service mismatch.");
 
                     await rxChar.startNotifications();
                     rxChar.addEventListener(
@@ -567,10 +541,10 @@
                         "block";
                     document.getElementById("app").style.display = "block";
 
-                    log("Syncing settings...");
+                    log("Reading settings...");
                     await readAllSettings();
                 } catch (e) {
-                    log("Conn Error: " + e);
+                    log("Error: " + e);
                 }
             }
 
@@ -586,63 +560,41 @@
                 log("Disconnected.");
             }
 
-            // --- ROBUST DECODER (Sanitized Hex) ---
+            // DECODER
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
                 let text = dec.decode(event.target.value);
+                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                // 1. SANITIZE: Remove anything that isn't a Hex Digit.
-                // This strips $, newlines, and invisible garbage bytes.
-                let cleanHex = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+                if (clean.length < 4) return;
+                let cmd = clean.substr(0, 2);
 
-                log("Raw: " + text.trim());
-
-                // We expect packets starting with 5F, 5C, etc.
-                // Check if we have enough length (min 4 chars: CMD + CHECK)
-                if (cleanHex.length < 4) return;
-
-                let cmd = cleanHex.substr(0, 2);
-
-                // CMD 5F (System/Backlight)
+                // Backlight
                 if (cmd === "5F") {
-                    // cleanHex indices: 5F(0-1) Check(2-3) Len(4-5) Padding(6-9) Backlight(10-11)
-                    // Log: 5F 8E 0C 00 00 07...
-                    let valStr = cleanHex.substr(10, 2);
-                    let bl = parseInt(valStr, 16);
-                    if (!isNaN(bl)) {
-                        highlightBtn("blGroup", "bl" + bl);
-                        log("Parsed BL: " + bl);
-                    }
+                    let bl = parseInt(clean.substr(10, 2), 16);
+                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
                 }
 
-                // CMD 5C (Scuba 1)
+                // Scuba 1
                 if (cmd === "5C") {
-                    // Log: 5C 95 0C 0F A0 00 3C 18 00
-                    // 5C(0-1) Check(2-3) Len(4-5) Depth(6-9) Time(10-13) Air(14-15) PPO2(16-17)
+                    let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
+                    syncInput("scubaDepth", depth);
 
-                    // Depth
-                    let dHex = cleanHex.substr(6, 4);
-                    let depth = (parseInt(dHex, 16) - 1000) / 100;
-                    if (!isNaN(depth)) {
-                        document.getElementById("scubaDepth").value = depth;
-                        log("Parsed Depth: " + depth);
+                    let time = parseInt(clean.substr(10, 4), 16);
+                    if (!isNaN(time)) {
+                        document.getElementById("timeoutSel").value = time;
+                        document
+                            .getElementById("timeoutSel")
+                            .parentElement.classList.add("synced");
                     }
 
-                    // Timeout
-                    let tHex = cleanHex.substr(10, 4);
-                    let time = parseInt(tHex, 16);
-                    if (!isNaN(time))
-                        document.getElementById("timeoutSel").value = time;
-
-                    // Air
-                    let air = parseInt(cleanHex.substr(14, 2), 16);
+                    let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
 
-                    // PPO2
-                    let ppo2 = parseInt(cleanHex.substr(16, 2), 16) / 10;
+                    let ppo2 = parseInt(clean.substr(16, 2), 16) / 10;
                     if (ppo2 < 1.0) ppo2 = 1.4;
                     if (!isNaN(ppo2)) {
                         document.getElementById("ppo2Range").value = ppo2;
@@ -650,51 +602,30 @@
                     }
                 }
 
-                // CMD 5B (Scuba 2)
+                // Scuba 2
                 if (cmd === "5B") {
-                    // Log: 5B FB 0C 00 7E 00 1E 01 01
-                    // 5B(0-1) Check(2-3) Len(4-5) Padding(6-9) Time(10-13) Safe(14-15) Mode(16-17)
+                    let time = parseInt(clean.substr(10, 4), 16);
+                    syncInput("scubaTime", time);
 
-                    // Time Alarm
-                    let time = parseInt(cleanHex.substr(10, 4), 16);
-                    if (!isNaN(time)) {
-                        document.getElementById("scubaTime").value = time;
-                        log("Parsed TimeAlm: " + time);
-                    }
+                    let safe = parseInt(clean.substr(14, 2), 16);
+                    highlightBtn("safeGroup", "safe" + safe);
 
-                    // Safety
-                    let safe = parseInt(cleanHex.substr(14, 2), 16);
-                    if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
-
-                    // Mode
-                    let mode = parseInt(cleanHex.substr(16, 2), 16);
-                    if (!isNaN(mode)) highlightBtn("modeGroup", "mode" + mode);
+                    let mode = parseInt(clean.substr(16, 2), 16);
+                    highlightBtn("modeGroup", "mode" + mode);
                 }
 
-                // CMD 5D (Free Depths)
+                // Freedive
                 if (cmd === "5D") {
-                    // Log: 5D ...
-                    // 5D(0-1) Check(2-3) Len(4-5) DataStart(6...)
                     for (let i = 0; i < 6; i++) {
-                        let hex = cleanHex.substr(6 + i * 2, 2);
-                        let val = parseInt(hex, 16);
-                        if (!isNaN(val))
-                            document.getElementById("fd" + (i + 1)).value =
-                                val + 5;
+                        let val = parseInt(clean.substr(6 + i * 2, 2), 16);
+                        syncInput("fd" + (i + 1), val + 5);
                     }
-                    log("Parsed Freedive Depths");
                 }
-
-                // CMD 60 (Free Time)
                 if (cmd === "60") {
-                    // Log: 60 2A 08 19 ...
-                    // 60(0-1) Check(2-3) Len(4-5) Val(6-7)
-                    let hex = cleanHex.substr(6, 2);
-                    let sec = parseInt(hex, 16) * 5 + 30;
+                    let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     if (!isNaN(sec)) {
                         document.getElementById("fdTimeRange").value = sec;
                         upd("fdTimeVal", sec + "s");
-                        log("Parsed FD Time: " + sec);
                     }
                 }
             }
@@ -710,7 +641,33 @@
                 ];
                 for (const q of qs) {
                     await sendStatic(q);
-                    await new Promise((r) => setTimeout(r, 250));
+                    await new Promise((r) => setTimeout(r, 200));
+                }
+            }
+
+            // HELPERS
+            function syncInput(id, val) {
+                let el = document.getElementById(id);
+                if (!isNaN(val) && el) {
+                    el.value = val;
+                    el.parentElement.classList.add("synced");
+                    setTimeout(
+                        () => el.parentElement.classList.remove("synced"),
+                        1000,
+                    );
+                }
+            }
+
+            function highlightBtn(grp, id) {
+                document
+                    .getElementById(grp)
+                    .querySelectorAll(".btn-opt")
+                    .forEach((b) => b.classList.remove("selected"));
+                let btn = document.getElementById(id);
+                if (btn) {
+                    btn.classList.add("selected");
+                    btn.classList.add("synced");
+                    setTimeout(() => btn.classList.remove("synced"), 1000);
                 }
             }
 
@@ -718,7 +675,6 @@
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
-                log("TX: " + str);
             }
 
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
@@ -730,16 +686,10 @@
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec.toString(16).padStart(2, "0");
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
+                log("Sent: " + prefix + "...");
             }
 
-            function highlightBtn(grp, id) {
-                document
-                    .getElementById(grp)
-                    .querySelectorAll(".btn-opt")
-                    .forEach((b) => b.classList.remove("selected"));
-                let btn = document.getElementById(id);
-                if (btn) btn.classList.add("selected");
-            }
+            // MAPPINGS
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
