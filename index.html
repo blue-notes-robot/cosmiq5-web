@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v10</title>
+        <title>Cosmiq 5 Manager v11 (Robust)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -186,19 +186,6 @@
                 border-left: 3px solid var(--red);
             }
 
-            /* Highlight animation for synced fields */
-            @keyframes flash {
-                0% {
-                    background-color: #d4edda;
-                }
-                100% {
-                    background-color: white;
-                }
-            }
-            .synced {
-                animation: flash 1s ease-out;
-            }
-
             #log {
                 font-family: monospace;
                 font-size: 10px;
@@ -206,7 +193,7 @@
                 margin-top: 30px;
                 text-align: left;
                 white-space: pre-wrap;
-                height: 120px;
+                height: 150px;
                 overflow-y: scroll;
                 background: #212529;
                 padding: 10px;
@@ -536,7 +523,6 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
-            // SMART CONNECTION LOGIC
             async function connect() {
                 try {
                     log("Scanning...");
@@ -600,55 +586,63 @@
                 log("Disconnected.");
             }
 
-            // CORRECTED DECODER (V10)
+            // --- ROBUST DECODER (Sanitized Hex) ---
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
-                let text = dec.decode(event.target.value).trim();
-                log("RX: " + text);
+                let text = dec.decode(event.target.value);
 
-                if (!text.startsWith("$")) return;
-                let cmd = text.substr(1, 2).toLowerCase();
+                // 1. SANITIZE: Remove anything that isn't a Hex Digit.
+                // This strips $, newlines, and invisible garbage bytes.
+                let cleanHex = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                // Packet Structure Note:
-                // Log shows: $5F 8E 0C 00 00 07...
-                // Indices:   01 23 45 67 89 01... (Char Index)
-                // So: $ is 0. 5F is 1,2.
+                log("Raw: " + text.trim());
 
-                // CMD 5F (Backlight)
-                if (cmd === "5f") {
-                    // Backlight is at Char Index 11-12
-                    let valStr = text.substr(11, 2);
+                // We expect packets starting with 5F, 5C, etc.
+                // Check if we have enough length (min 4 chars: CMD + CHECK)
+                if (cleanHex.length < 4) return;
+
+                let cmd = cleanHex.substr(0, 2);
+
+                // CMD 5F (System/Backlight)
+                if (cmd === "5F") {
+                    // cleanHex indices: 5F(0-1) Check(2-3) Len(4-5) Padding(6-9) Backlight(10-11)
+                    // Log: 5F 8E 0C 00 00 07...
+                    let valStr = cleanHex.substr(10, 2);
                     let bl = parseInt(valStr, 16);
-                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
+                    if (!isNaN(bl)) {
+                        highlightBtn("blGroup", "bl" + bl);
+                        log("Parsed BL: " + bl);
+                    }
                 }
 
                 // CMD 5C (Scuba 1)
-                if (cmd === "5c") {
-                    // Depth: Index 7 (4 chars)
-                    let dHex = text.substr(7, 4);
+                if (cmd === "5C") {
+                    // Log: 5C 95 0C 0F A0 00 3C 18 00
+                    // 5C(0-1) Check(2-3) Len(4-5) Depth(6-9) Time(10-13) Air(14-15) PPO2(16-17)
+
+                    // Depth
+                    let dHex = cleanHex.substr(6, 4);
                     let depth = (parseInt(dHex, 16) - 1000) / 100;
                     if (!isNaN(depth)) {
                         document.getElementById("scubaDepth").value = depth;
-                        document
-                            .getElementById("scubaDepth")
-                            .parentElement.classList.add("synced");
+                        log("Parsed Depth: " + depth);
                     }
 
-                    // Timeout: Index 11 (4 chars)
-                    let tHex = text.substr(11, 4);
+                    // Timeout
+                    let tHex = cleanHex.substr(10, 4);
                     let time = parseInt(tHex, 16);
                     if (!isNaN(time))
                         document.getElementById("timeoutSel").value = time;
 
-                    // Air: Index 15 (2 chars)
-                    let air = parseInt(text.substr(15, 2), 16);
+                    // Air
+                    let air = parseInt(cleanHex.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
 
-                    // PPO2: Index 17 (2 chars)
-                    let ppo2 = parseInt(text.substr(17, 2), 16) / 10;
+                    // PPO2
+                    let ppo2 = parseInt(cleanHex.substr(16, 2), 16) / 10;
                     if (ppo2 < 1.0) ppo2 = 1.4;
                     if (!isNaN(ppo2)) {
                         document.getElementById("ppo2Range").value = ppo2;
@@ -657,44 +651,50 @@
                 }
 
                 // CMD 5B (Scuba 2)
-                if (cmd === "5b") {
-                    // Note: Log had '007E' padding at index 7.
-                    // Real data starts at index 11.
+                if (cmd === "5B") {
+                    // Log: 5B FB 0C 00 7E 00 1E 01 01
+                    // 5B(0-1) Check(2-3) Len(4-5) Padding(6-9) Time(10-13) Safe(14-15) Mode(16-17)
 
-                    // Time Alarm: Index 11 (4 chars)
-                    let time = parseInt(text.substr(11, 4), 16);
-                    if (!isNaN(time))
+                    // Time Alarm
+                    let time = parseInt(cleanHex.substr(10, 4), 16);
+                    if (!isNaN(time)) {
                         document.getElementById("scubaTime").value = time;
+                        log("Parsed TimeAlm: " + time);
+                    }
 
-                    // Safety: Index 15 (2 chars)
-                    let safe = parseInt(text.substr(15, 2), 16);
+                    // Safety
+                    let safe = parseInt(cleanHex.substr(14, 2), 16);
                     if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
 
-                    // Mode: Index 17 (2 chars)
-                    let mode = parseInt(text.substr(17, 2), 16);
+                    // Mode
+                    let mode = parseInt(cleanHex.substr(16, 2), 16);
                     if (!isNaN(mode)) highlightBtn("modeGroup", "mode" + mode);
                 }
 
-                // CMD 5D (Freedive Depths)
-                if (cmd === "5d") {
-                    // Index 7 start. 2 chars each.
+                // CMD 5D (Free Depths)
+                if (cmd === "5D") {
+                    // Log: 5D ...
+                    // 5D(0-1) Check(2-3) Len(4-5) DataStart(6...)
                     for (let i = 0; i < 6; i++) {
-                        let hex = text.substr(7 + i * 2, 2);
+                        let hex = cleanHex.substr(6 + i * 2, 2);
                         let val = parseInt(hex, 16);
                         if (!isNaN(val))
                             document.getElementById("fd" + (i + 1)).value =
                                 val + 5;
                     }
+                    log("Parsed Freedive Depths");
                 }
 
-                // CMD 60 (Freedive Time)
+                // CMD 60 (Free Time)
                 if (cmd === "60") {
-                    // Index 7 (2 chars).
-                    let hex = text.substr(7, 2);
+                    // Log: 60 2A 08 19 ...
+                    // 60(0-1) Check(2-3) Len(4-5) Val(6-7)
+                    let hex = cleanHex.substr(6, 2);
                     let sec = parseInt(hex, 16) * 5 + 30;
                     if (!isNaN(sec)) {
                         document.getElementById("fdTimeRange").value = sec;
                         upd("fdTimeVal", sec + "s");
+                        log("Parsed FD Time: " + sec);
                     }
                 }
             }
