@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v18 (Test Harness)</title>
+        <title>Cosmiq 5 Manager v19 (Final Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -167,7 +167,7 @@
                 background: #000;
                 margin-top: 20px;
                 text-align: left;
-                height: 200px;
+                height: 250px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
@@ -178,7 +178,7 @@
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager v18</h1>
+            <h1>Cosmiq 5 Manager v19</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
@@ -191,7 +191,7 @@
             onclick="runSystemTest()"
             style="display: none"
         >
-            RUN SYSTEM TEST
+            RUN FULL SYSTEM TEST
         </button>
         <button
             id="disconnectBtn"
@@ -387,7 +387,6 @@
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
 
-            // UI Setup
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
@@ -481,7 +480,7 @@
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
                 let text = dec.decode(event.target.value);
-                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toLowerCase(); // FORCE LOWER
+                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toLowerCase();
 
                 if (clean.startsWith("80")) {
                     log(
@@ -502,17 +501,14 @@
                 if (cmd === "5c") {
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
-
                     let time = parseInt(clean.substr(10, 4), 16);
                     if (!isNaN(time))
                         document.getElementById("timeoutSel").value = time;
-
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
-
                     let ppo2 = parseInt(clean.substr(16, 2), 16) / 10;
                     if (ppo2 < 1.0) ppo2 = 1.4;
                     if (!isNaN(ppo2)) {
@@ -557,34 +553,34 @@
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---");
 
-                // 1. Set Safety to Progressive (2)
-                log("Test: Set Safety -> Progressive");
+                log("1. Set Safety -> Progressive");
                 await setSafe(2, document.getElementById("safe2"));
-                await new Promise((r) => setTimeout(r, 500));
+                await new Promise((r) => setTimeout(r, 600));
 
-                // 2. Set Air to 32%
-                log("Test: Set Air -> 32%");
+                log("2. Set Air -> 32%");
                 document.getElementById("airRange").value = 32;
                 await setAir();
-                await new Promise((r) => setTimeout(r, 500));
+                await new Promise((r) => setTimeout(r, 600));
 
-                // 3. Set PPO2 to 1.5
-                log("Test: Set PPO2 -> 1.5");
+                log("3. Set PPO2 -> 1.5");
                 document.getElementById("ppo2Range").value = 1.5;
                 await setPPO2();
-                await new Promise((r) => setTimeout(r, 500));
+                await new Promise((r) => setTimeout(r, 600));
 
-                // 4. Set Scuba Depth to 35m
-                log("Test: Set Depth -> 35m");
-                document.getElementById("scubaDepth").value = 35;
-                await setScubaDepth();
-                await new Promise((r) => setTimeout(r, 500));
+                log("4. Set Timeout -> 30s");
+                document.getElementById("timeoutSel").value = 30;
+                await setTimeoutSec();
+                await new Promise((r) => setTimeout(r, 600));
+
+                log("5. Set Backlight -> 3");
+                await setBL(5, document.getElementById("bl5"));
+                await new Promise((r) => setTimeout(r, 600));
 
                 log("--- VERIFYING ---");
                 await readAllSettings();
             }
 
-            // SENDERS (Force Lowercase)
+            // SENDERS
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
@@ -592,7 +588,7 @@
             }
 
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
-                let v = valHex.toLowerCase(); // Ensure lowercase values
+                let v = valHex.toLowerCase();
                 let p = prefix.toLowerCase();
 
                 let payloadBytes = [];
@@ -601,6 +597,9 @@
                     payloadBytes.push(parseInt(v.substr(i, 2), 16));
 
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
+
+                // CALCULATE CHECKSUM (Fixed Math)
+                // Target - Sum = Checksum
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec
                     .toString(16)
@@ -610,7 +609,7 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`);
             }
 
-            // FUNCTIONS
+            // FUNCTIONS (FIXED TARGETS & TYPOS)
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
@@ -624,29 +623,30 @@
                 verify("sys");
             }
 
-            // FIXED TYPO: removed extra 'db' from string
+            // Fixed: Removed extra 'd' from prefix (Was #21dd...)
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21d${c}04000${s}`);
+                sendStatic(`#21${c}04000${s}`);
                 verify("scuba2");
             }
 
+            // Updated Targets to match E=Target+Sum logic
             function setTimeoutSec() {
                 let s = parseInt(document.getElementById("timeoutSel").value);
-                sendCalc("2a", 210, s.toString(16).padStart(4, "0"), "04");
+                sendCalc("2a", 214, s.toString(16).padStart(4, "0"), "04");
                 verify("scuba1");
             }
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
-                sendCalc("22", 222, v.toString(16).padStart(2, "0"));
+                sendCalc("22", 224, v.toString(16).padStart(2, "0"));
                 verify("scuba1");
             }
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalc(
                     "2d",
-                    211,
+                    225,
                     Math.round(v * 10)
                         .toString(16)
                         .padStart(2, "0"),
@@ -672,7 +672,7 @@
                 let s = parseInt(document.getElementById("fdTimeRange").value);
                 sendCalc(
                     "26",
-                    228,
+                    209,
                     "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
                     "04",
                 );
@@ -680,6 +680,7 @@
                     await sendStatic("#609e0200");
                 }, 600);
             }
+
             function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
                 let h = (m - 5).toString(16).padStart(2, "0");
