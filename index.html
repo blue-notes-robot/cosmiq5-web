@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v42 (Gold Master)</title>
+        <title>Cosmiq 5 Manager v43 (Safety Read Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -545,7 +545,7 @@
                     >
                         Use this tool to find missing settings. <br />
                         Confirmed: $5B (Time/Timeout/Date/Units), $5C (Mode),
-                        $5D (PPO2).
+                        $5D (Safe/PPO2), $60 (FD6).
                     </p>
                     <button
                         class="btn-main"
@@ -721,13 +721,6 @@
 
                 if (cmd === "5B") {
                     // Scuba 2
-                    // Byte 0 (6-7): Safety Factor
-                    let safe = parseInt(clean.substr(6, 2), 16);
-                    if (safe >= 0 && safe <= 2) {
-                        highlightBtn("safeGroup", "safe" + safe);
-                        log("> Parsed Safety: " + safe);
-                    }
-
                     // Byte 1 (8-9): Time Alarm
                     let timeAlarm = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(timeAlarm)) {
@@ -768,12 +761,20 @@
                 }
 
                 if (cmd === "5D") {
-                    // Freedive Depth & PPO2
-                    // Bytes 0-4: Alarms 1-5
-                    for (let i = 0; i < 5; i++) {
+                    // Freedive 1-4, Safety, PPO2
+                    // Bytes 0-3: Alarms 1-4
+                    for (let i = 0; i < 4; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
                     }
+
+                    // Byte 4 (14-15): Safety Factor (0=Consv, 1=Norm, 2=Prog)
+                    let safe = parseInt(clean.substr(14, 2), 16);
+                    if (safe >= 0 && safe <= 2) {
+                        highlightBtn("safeGroup", "safe" + safe);
+                        log("> Parsed Safety: " + safe);
+                    }
+
                     // Byte 5 (16-17): PPO2
                     let ppo2Raw = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(ppo2Raw)) {
@@ -784,11 +785,17 @@
                     }
                 }
                 if (cmd === "60") {
-                    // Freedive Time & Alarm 6
+                    // Freedive Time & Alarms 5-6
                     // Byte 0 (6-7): Time Factor
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     syncInput("fdTimeRange", sec);
                     upd("fdTimeVal", sec + "s");
+
+                    // Byte 1 (8-9): Alarm 5 (Assumed)
+                    let fda5 = parseInt(clean.substr(8, 2), 16);
+                    if (!isNaN(fda5)) {
+                        syncInput("fd5", fda5 + 5);
+                    }
 
                     // Byte 2 (10-11): Alarm 6
                     let fda6 = parseInt(clean.substr(10, 2), 16);
@@ -897,7 +904,7 @@
                 highlightBtn("safeGroup", btn.id);
                 let valStr = "000" + s;
                 sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
-                verify("scuba2");
+                verify("free"); // Safety is in $5D (Free)
             }
 
             function setBL(l, btn) {
@@ -1030,10 +1037,10 @@
                     "Set FD Depth " + idx + " to " + m + "m",
                 );
 
-                if (idx < 6) verify("free");
-                if (idx === 6)
+                if (idx <= 4) verify("free");
+                if (idx >= 5)
                     setTimeout(async () => {
-                        await sendStatic("#609e0200", "Verify FD6");
+                        await sendStatic("#609e0200", "Verify FD5/6");
                     }, 600);
             }
 
