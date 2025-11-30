@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v27</title>
+        <title>Cosmiq 5 Manager v31 (Corrected)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -196,19 +196,22 @@
 
             #log {
                 font-family: monospace;
-                font-size: 11px;
-                color: #2ecc71;
-                background: #212529;
+                font-size: 10px;
+                color: #aaa;
                 margin-top: 20px;
                 text-align: left;
                 height: 200px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
+                background: #212529;
                 white-space: pre-wrap;
             }
             .log-tx {
                 color: #4dabf7;
+            }
+            .log-rx {
+                color: #2ecc71;
             }
             .log-err {
                 color: #ff6b6b;
@@ -282,32 +285,16 @@
                     <div style="margin-top: 15px"></div>
                     <span class="label">Units & Date</span>
                     <div class="grid">
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#23da0201', 'Set Metric')"
-                        >
+                        <button class="btn-opt" onclick="setUnits(1)">
                             Metric
                         </button>
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#23db0200', 'Set Imperial')"
-                        >
+                        <button class="btn-opt" onclick="setUnits(0)">
                             Imperial
                         </button>
-                        <button
-                            class="btn-opt"
-                            onclick="
-                                sendStatic('#24da0200', 'Set Current Date')
-                            "
-                        >
+                        <button class="btn-opt" onclick="setDate(0)">
                             Now
                         </button>
-                        <button
-                            class="btn-opt"
-                            onclick="
-                                sendStatic('#24d90201', 'Set Last Dive Date')
-                            "
-                        >
+                        <button class="btn-opt" onclick="setDate(1)">
                             Last Dive
                         </button>
                     </div>
@@ -437,7 +424,7 @@
                             value="21"
                             oninput="upd('airVal', this.value + '%')"
                         />
-                        <span class="val" id="airVal">21%</span>
+                        <span class="val" id="airVal">--</span>
                         <button class="btn-set" onclick="setAir()">Set</button>
                     </div>
                 </div>
@@ -493,10 +480,9 @@
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
 
-            // UI Generation
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
-                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
             function tab(id) {
@@ -592,27 +578,23 @@
                     log("!!! COMMAND REJECTED !!!", "log-err");
                     return;
                 }
-                if (clean.startsWith("2")) {
-                    // ACK packet
-                    return; // Silence ACKs to keep log clean for user, or enable if debugging
-                }
 
-                log("RX: " + text.trim());
+                log("RX: " + text.trim(), "log-rx");
 
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
-                // Backlight
                 if (cmd === "5F") {
+                    // Backlight
                     let bl = parseInt(clean.substr(10, 2), 16);
                     if (!isNaN(bl)) {
                         highlightBtn("blGroup", "bl" + bl);
-                        log("> Backlight: Level " + (bl - 2)); // Maps 3-7 to 1-5
+                        log("> Parsed Backlight: Level " + (bl - 2));
                     }
                 }
 
-                // Scuba 1
                 if (cmd === "5C") {
+                    // Scuba 1
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
 
@@ -622,20 +604,28 @@
                         upd("airVal", air + "%");
                     }
 
-                    // Read PPO2 as raw offset? No, let's just log it.
-                    // We disabled Sync for PPO2/Timeout because Read is unreliable
+                    log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
                 }
 
-                // Scuba 2
                 if (cmd === "5B") {
-                    let time = parseInt(clean.substr(10, 4), 16);
-                    syncInput("scubaTime", time);
+                    // Scuba 2
+                    // Bytes 10-13 = Timeout (confirmed by user)
+                    let timeOut = parseInt(clean.substr(10, 4), 16);
+                    if (timeOut < 10) {
+                        // Safety check to ensure it's an index
+                        document.getElementById("timeoutSel").value = timeOut;
+                        document
+                            .getElementById("timeoutSel")
+                            .parentElement.classList.add("synced");
+                        log("> Parsed Timeout Index: " + timeOut);
+                    }
 
                     let safe = parseInt(clean.substr(14, 2), 16);
                     highlightBtn("safeGroup", "safe" + safe);
+
+                    // Let's grab Time Alarm from here too just in case, but logs were fuzzy
                 }
 
-                // Freedive
                 if (cmd === "5D") {
                     for (let i = 0; i < 6; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
@@ -670,28 +660,28 @@
 
                 log("1. Set Safety -> Progressive");
                 await setSafe(2, document.getElementById("safe2"));
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => setTimeout(r, 800));
 
                 log("2. Set Air -> 32%");
                 document.getElementById("airRange").value = 32;
                 await setAir();
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => setTimeout(r, 800));
 
                 log("3. Set PPO2 -> 1.6");
                 document.getElementById("ppo2Range").value = 1.6;
                 await setPPO2();
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => setTimeout(r, 800));
 
-                log("4. Set Timeout -> 30s");
-                document.getElementById("timeoutSel").value = 1; // Index 1
+                log("4. Set Timeout -> 30s (Index 1)");
+                document.getElementById("timeoutSel").value = 1;
                 await setTimeoutIndex();
-                await new Promise((r) => setTimeout(r, 1000));
+                await new Promise((r) => setTimeout(r, 800));
 
-                log("5. Set Backlight -> 3");
-                await setBL(5, document.getElementById("bl5"));
-                await new Promise((r) => setTimeout(r, 1000));
+                log("5. Set Units -> Imperial");
+                await setUnits(0);
+                await new Promise((r) => setTimeout(r, 800));
 
-                log("--- READING BACK ---", "log-info");
+                log("--- VERIFYING ---", "log-info");
                 await readAllSettings();
             }
 
@@ -703,8 +693,7 @@
                 log(`<span class="log-tx">TX: ${desc}</span>`);
             }
 
-            // Algorithm: Full Sum (Target - (Len + ValBytes))
-            // Used for: Air, PPO2, Timeout, Alarms, FD Time
+            // ALGO 1: Full Sum (Target - (Len + Val))
             async function sendCalcSum(
                 prefix,
                 targetSum,
@@ -729,32 +718,9 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
-            // Algorithm: Val Only (Target - ValBytes). No Len.
-            // Used for: Safety Factor
-            async function sendCalcVal(
-                prefix,
-                targetSum,
-                valHex,
-                lenHex = "02",
-                desc = "",
-            ) {
-                let v = valHex.toLowerCase();
-                let p = prefix.toLowerCase();
-                let payloadBytes = [];
-                for (let i = 0; i < v.length; i += 2)
-                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
-                let sum = payloadBytes.reduce((a, b) => a + b, 0);
-                let checkDec = (targetSum - sum) & 0xff;
-                let checkHex = checkDec
-                    .toString(16)
-                    .padStart(2, "0")
-                    .toLowerCase();
-                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
-            }
-
             // --- FUNCTIONS (VERIFIED TARGETS) ---
 
-            // Backlight: Target 210.
+            // Backlight: 210
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
                 let v = "0" + l;
@@ -762,7 +728,10 @@
                 verify("sys");
             }
 
-            // Safety: Target 219 (Val Only).
+            // Safety: 219 (Val Only, but we can fake it via CalcSum if we adjust target)
+            // Checksum = 219 - Val. CalcSum does (Target - (Len+Val)).
+            // So 219 - Val = Target - 2 - Val.  => Target = 221.
+            // Let's stick to the static mapping which is safer and already working.
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
@@ -770,7 +739,6 @@
                 verify("scuba2");
             }
 
-            // Mode: Static. No Sync.
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
@@ -778,16 +746,15 @@
                 sendStatic(c, "Set Mode");
             }
 
-            // Timeout: Target 214. Index based (0-3).
+            // Timeout: Target 214 (Index 0-3)
             function setTimeoutIndex() {
                 let idx = parseInt(document.getElementById("timeoutSel").value);
-                // 0=15s, 1=30s, 2=60s, 3=120s? Assuming simple index.
                 let h = idx.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
-                // No verify, read is unreliable
+                verify("scuba2"); // Timeout is in 5B (Scuba2)
             }
 
-            // Air: Target 222 (Full Sum)
+            // Air: Target 222
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 sendCalcSum(
@@ -800,7 +767,7 @@
                 verify("scuba1");
             }
 
-            // PPO2: Target 211 (Full Sum)
+            // PPO2: Target 211
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalcSum(
@@ -815,7 +782,16 @@
                 verify("scuba1");
             }
 
-            // Alarms: Target 217/216 (Full Sum)
+            // Units: Target 221 (0xDD)
+            function setUnits(m) {
+                sendCalcSum("23", 221, "0" + m, "02", "Set Units " + m);
+            }
+
+            // Date: Target 220 (0xDC)
+            function setDate(m) {
+                sendCalcSum("24", 220, "0" + m, "02", "Set DateFmt " + m);
+            }
+
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
                 sendCalcSum(
@@ -839,7 +815,6 @@
                 verify("scuba2");
             }
 
-            // FD Time: Target 218 (Full Sum)
             function setFdTime() {
                 let s = parseInt(document.getElementById("fdTimeRange").value);
                 sendCalcSum(
@@ -918,7 +893,7 @@
                 if (type === "free") cmd = "#5da10200";
                 if (cmd)
                     setTimeout(async () => {
-                        await sendStatic(cmd, "Reading...");
+                        await sendStatic(cmd, "Verify");
                     }, 600);
             }
         </script>
