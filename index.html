@@ -3,393 +3,923 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 - General Diagnostics</title>
+        <title>Cosmiq 5 Manager v27</title>
         <style>
             :root {
-                --bg: #1e1e1e;
-                --text: #e0e0e0;
-                --accent: #007acc;
-                --log-bg: #101010;
+                --blue: #007bff;
+                --green: #28a745;
+                --red: #dc3545;
+                --bg: #f8f9fa;
+                --text: #212529;
             }
             body {
-                font-family: "Consolas", "Monaco", monospace;
+                font-family: -apple-system, sans-serif;
                 background: var(--bg);
                 color: var(--text);
                 padding: 15px;
-                max-width: 700px;
+                max-width: 600px;
                 margin: 0 auto;
             }
 
-            h1 {
-                font-size: 18px;
-                border-bottom: 1px solid #444;
-                padding-bottom: 10px;
+            header {
+                text-align: center;
                 margin-bottom: 20px;
             }
+            h1 {
+                font-size: 20px;
+                margin: 0;
+                color: #343a40;
+            }
+            .status {
+                font-size: 12px;
+                font-weight: 600;
+                color: #adb5bd;
+                margin-top: 5px;
+            }
+            .connected {
+                color: var(--green);
+            }
 
-            /* Buttons */
             button {
                 cursor: pointer;
                 border: none;
+                outline: none;
+                font-weight: 600;
                 font-family: inherit;
-                font-weight: bold;
-                padding: 10px 15px;
-                border-radius: 4px;
-                font-size: 14px;
-                transition: 0.1s;
-                display: block;
+            }
+            .btn-main {
                 width: 100%;
+                padding: 14px;
+                border-radius: 10px;
+                font-size: 16px;
+                color: white;
+                background: var(--blue);
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                transition: 0.1s;
                 margin-bottom: 10px;
             }
-            .btn-conn {
-                background: #28a745;
-                color: white;
+            .btn-main:active {
+                transform: scale(0.98);
             }
             .btn-test {
-                background: #ffc107;
-                color: #333;
+                background: #6f42c1;
             }
             .btn-disc {
-                background: #dc3545;
-                color: white;
+                background: #6c757d;
                 display: none;
             }
 
-            /* Layout */
-            .controls {
-                display: none;
-                border: 1px solid #444;
-                padding: 15px;
-                border-radius: 8px;
-                margin-bottom: 20px;
-                background: #252526;
+            .tabs {
+                display: flex;
+                background: white;
+                padding: 5px;
+                border-radius: 10px;
+                margin-bottom: 15px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             }
+            .tab {
+                flex: 1;
+                padding: 10px;
+                background: none;
+                color: #6c757d;
+                border-radius: 8px;
+                font-size: 14px;
+                transition: 0.2s;
+            }
+            .tab.active {
+                background: var(--blue);
+                color: white;
+            }
+
+            .section {
+                display: none;
+                animation: fadeIn 0.3s;
+            }
+            .section.active {
+                display: block;
+            }
+            @keyframes fadeIn {
+                from {
+                    opacity: 0;
+                }
+                to {
+                    opacity: 1;
+                }
+            }
+
+            .card {
+                background: white;
+                padding: 15px;
+                border-radius: 12px;
+                margin-bottom: 12px;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            }
+            .card h3 {
+                margin: 0 0 15px 0;
+                font-size: 13px;
+                text-transform: uppercase;
+                color: #868e96;
+                border-bottom: 1px solid #eee;
+                padding-bottom: 8px;
+            }
+
+            .label {
+                font-size: 13px;
+                font-weight: 600;
+                margin-bottom: 8px;
+                display: block;
+                color: #495057;
+            }
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+                gap: 8px;
+            }
+
+            .btn-opt {
+                padding: 10px;
+                background: #f1f3f5;
+                border-radius: 6px;
+                color: #495057;
+                font-size: 13px;
+                transition: 0.2s;
+            }
+            .btn-opt.selected {
+                background: #e3f2fd;
+                color: var(--blue);
+                border: 1px solid #90caf9;
+            }
+
+            .synced {
+                animation: flashGreen 1.5s ease-out;
+            }
+            @keyframes flashGreen {
+                0% {
+                    background-color: #d4edda;
+                }
+                100% {
+                    background-color: transparent;
+                }
+            }
+
             .row {
                 display: flex;
-                gap: 10px;
-                margin-bottom: 10px;
                 align-items: center;
+                gap: 10px;
+                margin-bottom: 15px;
             }
-            .label {
-                width: 120px;
-                font-size: 12px;
-                color: #888;
-            }
-
-            /* Inputs */
-            select,
-            input {
-                background: #3c3c3c;
-                border: 1px solid #555;
-                color: white;
-                padding: 5px;
-                border-radius: 3px;
+            input[type="range"] {
                 flex: 1;
             }
+            input[type="number"] {
+                width: 60px;
+                padding: 8px;
+                text-align: center;
+                border: 1px solid #ced4da;
+                border-radius: 6px;
+                font-weight: bold;
+                color: var(--blue);
+            }
+            .val {
+                font-family: monospace;
+                font-weight: bold;
+                width: 45px;
+                text-align: right;
+            }
+            .btn-set {
+                padding: 8px 16px;
+                background: var(--blue);
+                color: white;
+                border-radius: 6px;
+                font-size: 13px;
+            }
 
-            /* Logs */
             #log {
+                font-family: monospace;
                 font-size: 11px;
-                background: var(--log-bg);
-                border: 1px solid #333;
-                height: 400px;
+                color: #2ecc71;
+                background: #212529;
+                margin-top: 20px;
+                text-align: left;
+                height: 200px;
                 overflow-y: scroll;
                 padding: 10px;
+                border-radius: 8px;
                 white-space: pre-wrap;
-                border-radius: 4px;
-                line-height: 1.5;
-                color: #bbb;
             }
-            .tx {
-                color: #569cd6;
-            } /* Blue */
-            .rx {
-                color: #ce9178;
-            } /* Orange */
-            .info {
-                color: #6a9955;
+            .log-tx {
+                color: #4dabf7;
+            }
+            .log-err {
+                color: #ff6b6b;
                 font-weight: bold;
-            } /* Green */
-            .err {
-                color: #f44747;
+            }
+            .log-info {
+                color: #ffd700;
                 font-weight: bold;
-            } /* Red */
-            .sys {
-                color: #dcdcaa;
-            } /* Yellow */
+            }
         </style>
     </head>
     <body>
-        <h1>Cosmiq 5 - General Diagnostics</h1>
+        <header>
+            <h1>Cosmiq 5 Manager</h1>
+            <div id="status" class="status">Disconnected</div>
+        </header>
 
-        <button id="btnConn" class="btn-conn" onclick="connect()">
-            1. CONNECT & SYNC
+        <button id="connectBtn" class="btn-main" onclick="connect()">
+            Connect & Sync
         </button>
         <button
-            id="btnTest"
-            class="btn-test"
-            onclick="runGeneralTest()"
+            id="testBtn"
+            class="btn-main btn-test"
+            onclick="runSystemTest()"
             style="display: none"
         >
-            2. TEST GENERAL SETTINGS (AUTO)
+            RUN SYSTEM TEST
         </button>
-        <button id="btnDisc" class="btn-disc" onclick="disconnect()">
-            DISCONNECT
+        <button
+            id="disconnectBtn"
+            class="btn-main btn-disc"
+            onclick="disconnect()"
+        >
+            Disconnect
         </button>
 
-        <div id="controls" class="controls">
-            <div class="row">
-                <span class="label">Default Mode</span>
-                <button onclick="setMode(0)" style="width: auto; flex: 1">
-                    Scuba
-                </button>
-                <button onclick="setMode(2)" style="width: auto; flex: 1">
-                    Freedive
-                </button>
-                <button onclick="setMode(1)" style="width: auto; flex: 1">
-                    Gauge
-                </button>
+        <div id="app" style="display: none; margin-top: 20px">
+            <div class="tabs">
+                <button class="tab active" onclick="tab('gen')">General</button>
+                <button class="tab" onclick="tab('scuba')">Scuba</button>
+                <button class="tab" onclick="tab('free')">Freedive</button>
             </div>
-            <div class="row">
-                <span class="label">Timeout (Index)</span>
-                <select id="selTime">
-                    <option value="0">Index 0</option>
-                    <option value="1">Index 1</option>
-                    <option value="2">Index 2</option>
-                    <option value="3">Index 3</option>
-                </select>
-                <button onclick="setTimeoutIndex()" style="width: auto">
-                    Set
-                </button>
+
+            <div id="gen" class="section active">
+                <div class="card">
+                    <h3>System</h3>
+                    <span class="label">Default Mode</span>
+                    <div class="grid" id="modeGroup">
+                        <button
+                            class="btn-opt"
+                            id="mode0"
+                            onclick="setMode(0, this)"
+                        >
+                            Scuba
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="mode2"
+                            onclick="setMode(2, this)"
+                        >
+                            Freedive
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="mode1"
+                            onclick="setMode(1, this)"
+                        >
+                            Gauge
+                        </button>
+                    </div>
+                    <div style="margin-top: 15px"></div>
+                    <span class="label">Units & Date</span>
+                    <div class="grid">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#23da0201', 'Set Metric')"
+                        >
+                            Metric
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#23db0200', 'Set Imperial')"
+                        >
+                            Imperial
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="
+                                sendStatic('#24da0200', 'Set Current Date')
+                            "
+                        >
+                            Now
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="
+                                sendStatic('#24d90201', 'Set Last Dive Date')
+                            "
+                        >
+                            Last Dive
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Display</h3>
+                    <span class="label">Screen Timeout</span>
+                    <div class="row">
+                        <select
+                            id="timeoutSel"
+                            style="
+                                flex: 1;
+                                padding: 8px;
+                                border-radius: 6px;
+                                background: #fff;
+                                border: 1px solid #ced4da;
+                            "
+                        >
+                            <option value="0">15 Seconds</option>
+                            <option value="1">30 Seconds</option>
+                            <option value="2">60 Seconds</option>
+                            <option value="3">120 Seconds</option>
+                        </select>
+                        <button class="btn-set" onclick="setTimeoutIndex()">
+                            Set
+                        </button>
+                    </div>
+                    <span class="label">Backlight</span>
+                    <div class="grid" id="blGroup">
+                        <button
+                            class="btn-opt"
+                            id="bl3"
+                            onclick="setBL(3, this)"
+                        >
+                            1
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="bl4"
+                            onclick="setBL(4, this)"
+                        >
+                            2
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="bl5"
+                            onclick="setBL(5, this)"
+                        >
+                            3
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="bl6"
+                            onclick="setBL(6, this)"
+                        >
+                            4
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="bl7"
+                            onclick="setBL(7, this)"
+                        >
+                            5
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="row">
-                <span class="label">Backlight (1-5)</span>
-                <input type="number" id="inpBL" value="3" min="1" max="5" />
-                <button onclick="setBacklight()" style="width: auto">
-                    Set
-                </button>
+
+            <div id="scuba" class="section">
+                <div class="card">
+                    <h3>Safety</h3>
+                    <span class="label">Safety Factor</span>
+                    <div
+                        class="grid"
+                        id="safeGroup"
+                        style="margin-bottom: 15px"
+                    >
+                        <button
+                            class="btn-opt"
+                            id="safe0"
+                            onclick="setSafe(0, this)"
+                        >
+                            Consv
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="safe1"
+                            onclick="setSafe(1, this)"
+                        >
+                            Norm
+                        </button>
+                        <button
+                            class="btn-opt"
+                            id="safe2"
+                            onclick="setSafe(2, this)"
+                        >
+                            Prog
+                        </button>
+                    </div>
+                    <span class="label">Max PPO2</span>
+                    <div class="row">
+                        <input
+                            type="range"
+                            id="ppo2Range"
+                            min="1.2"
+                            max="1.6"
+                            step="0.1"
+                            value="1.4"
+                            oninput="upd('ppo2Val', this.value)"
+                        />
+                        <span class="val" id="ppo2Val">1.4</span>
+                        <button class="btn-set" onclick="setPPO2()">Set</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Gas</h3>
+                    <span class="label">Air Mix (O2 %)</span>
+                    <div class="row">
+                        <input
+                            type="range"
+                            id="airRange"
+                            min="21"
+                            max="40"
+                            step="1"
+                            value="21"
+                            oninput="upd('airVal', this.value + '%')"
+                        />
+                        <span class="val" id="airVal">21%</span>
+                        <button class="btn-set" onclick="setAir()">Set</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Alarms</h3>
+                    <div class="row">
+                        <span style="font-size: 13px; flex: 1">Depth (m)</span>
+                        <input type="number" id="scubaDepth" placeholder="--" />
+                        <button class="btn-set" onclick="setScubaDepth()">
+                            Set
+                        </button>
+                    </div>
+                    <div class="row">
+                        <span style="font-size: 13px; flex: 1">Time (min)</span>
+                        <input type="number" id="scubaTime" placeholder="--" />
+                        <button class="btn-set" onclick="setScubaTime()">
+                            Set
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="free" class="section">
+                <div class="card">
+                    <h3>Alarms</h3>
+                    <span class="label">Max Time (Seconds)</span>
+                    <div class="row" style="margin-bottom: 20px">
+                        <input
+                            type="range"
+                            id="fdTimeRange"
+                            min="30"
+                            max="600"
+                            step="5"
+                            value="60"
+                            oninput="upd('fdTimeVal', this.value + 's')"
+                        />
+                        <span class="val" id="fdTimeVal">--</span>
+                        <button class="btn-set" onclick="setFdTime()">
+                            Set
+                        </button>
+                    </div>
+
+                    <span class="label">Depth Alarms (m)</span>
+                    <div id="fdAlarms"></div>
+                </div>
             </div>
         </div>
 
-        <div id="log">Waiting...</div>
+        <div id="log">Waiting for connection...</div>
 
         <script>
-            const SVC_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-            let dev, tx, rx;
+            const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+            let dev, txChar, rxChar;
 
-            // --- LOGGER ---
-            function log(msg, type = "") {
+            // UI Generation
+            const fdDiv = document.getElementById("fdAlarms");
+            for (let i = 1; i <= 6; i++) {
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+            }
+
+            function tab(id) {
+                document
+                    .querySelectorAll(".section")
+                    .forEach((e) => e.classList.remove("active"));
+                document
+                    .querySelectorAll(".tab")
+                    .forEach((e) => e.classList.remove("active"));
+                document.getElementById(id).classList.add("active");
+                event.target.classList.add("active");
+            }
+            function upd(id, val) {
+                document.getElementById(id).innerText = val;
+            }
+
+            function log(m, type = "") {
+                console.log(m);
                 const el = document.getElementById("log");
-                el.innerHTML += `<span class="${type}">${msg}</span>\n`;
+                let span = `<span class="${type}">${m}</span>`;
+                el.innerHTML += "\n" + span;
                 el.scrollTop = el.scrollHeight;
             }
 
-            // --- CONNECTION ---
             async function connect() {
                 try {
-                    log("Scanning...", "sys");
+                    log("Scanning...");
                     dev = await navigator.bluetooth.requestDevice({
                         filters: [
                             { namePrefix: "COS" },
                             { namePrefix: "Deep" },
                         ],
-                        optionalServices: [SVC_UUID],
+                        optionalServices: [SERVICE_UUID],
                     });
                     dev.addEventListener("gattserverdisconnected", onDisc);
-
                     const server = await dev.gatt.connect();
-                    const service = await server.getPrimaryService(SVC_UUID);
+                    const service =
+                        await server.getPrimaryService(SERVICE_UUID);
 
-                    // Smart Char Discovery
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
                             c.properties.write ||
                             c.properties.writeWithoutResponse
                         )
-                            tx = c;
-                        if (c.properties.notify) rx = c;
+                            txChar = c;
+                        if (c.properties.notify) rxChar = c;
                     }
 
-                    await rx.startNotifications();
-                    rx.addEventListener("characteristicvaluechanged", handleRX);
+                    await rxChar.startNotifications();
+                    rxChar.addEventListener(
+                        "characteristicvaluechanged",
+                        handleRX,
+                    );
 
-                    document.getElementById("btnConn").style.display = "none";
-                    document.getElementById("btnDisc").style.display = "block";
-                    document.getElementById("btnTest").style.display = "block";
-                    document.querySelector(".controls").style.display = "block";
+                    document.getElementById("status").innerText = "Connected";
+                    document
+                        .getElementById("status")
+                        .classList.add("connected");
+                    document.getElementById("connectBtn").style.display =
+                        "none";
+                    document.getElementById("disconnectBtn").style.display =
+                        "block";
+                    document.getElementById("testBtn").style.display = "block";
+                    document.getElementById("app").style.display = "block";
 
-                    log("Connected. Syncing...", "info");
-                    await readAll();
+                    log("Reading settings...");
+                    await readAllSettings();
                 } catch (e) {
-                    log("Error: " + e, "err");
+                    log("Error: " + e, "log-err");
                 }
             }
 
             function disconnect() {
-                if (dev) dev.gatt.disconnect();
+                if (dev && dev.gatt.connected) dev.gatt.disconnect();
             }
-
             function onDisc() {
-                document.getElementById("btnConn").style.display = "block";
-                document.getElementById("btnDisc").style.display = "none";
-                document.getElementById("btnTest").style.display = "none";
-                document.querySelector(".controls").style.display = "none";
-                log("Disconnected", "err");
+                document.getElementById("status").innerText = "Disconnected";
+                document.getElementById("status").classList.remove("connected");
+                document.getElementById("connectBtn").style.display = "block";
+                document.getElementById("disconnectBtn").style.display = "none";
+                document.getElementById("testBtn").style.display = "none";
+                document.getElementById("app").style.display = "none";
+                log("Disconnected.");
             }
 
-            // --- PROTOCOL HANDLER ---
             function handleRX(event) {
-                let dec = new TextDecoder();
-                let text = dec.decode(event.target.value).trim();
+                let dec = new TextDecoder("utf-8");
+                let text = dec.decode(event.target.value);
                 let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                // Log raw RX with label
-                let label = "Unknown";
-                let cmd = clean.substr(0, 2);
-
-                if (cmd === "58") label = "System Info";
-                if (cmd === "5F") label = "Backlight Config";
-                if (cmd === "5B") label = "Scuba Config 2";
-                if (cmd === "5C") label = "Scuba Config 1";
-                if (cmd === "5D") label = "Freedive Depths";
-                if (cmd === "60") label = "Freedive Time";
                 if (clean.startsWith("80")) {
-                    log(`NACK (Rejected): ${clean}`, "err");
+                    log("!!! COMMAND REJECTED !!!", "log-err");
                     return;
                 }
                 if (clean.startsWith("2")) {
-                    log(`ACK (Accepted): ${clean}`, "info");
-                    return;
+                    // ACK packet
+                    return; // Silence ACKs to keep log clean for user, or enable if debugging
                 }
 
-                log(`RX [${label}]: ${clean}`, "rx");
+                log("RX: " + text.trim());
 
-                // PARSERS (General Only)
+                if (clean.length < 4) return;
+                let cmd = clean.substr(0, 2);
+
+                // Backlight
                 if (cmd === "5F") {
                     let bl = parseInt(clean.substr(10, 2), 16);
-                    log(`   > REPORT: Backlight Level = ${bl}`, "info");
+                    if (!isNaN(bl)) {
+                        highlightBtn("blGroup", "bl" + bl);
+                        log("> Backlight: Level " + (bl - 2)); // Maps 3-7 to 1-5
+                    }
                 }
+
+                // Scuba 1
+                if (cmd === "5C") {
+                    let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
+                    syncInput("scubaDepth", depth);
+
+                    let air = parseInt(clean.substr(14, 2), 16);
+                    if (!isNaN(air)) {
+                        document.getElementById("airRange").value = air;
+                        upd("airVal", air + "%");
+                    }
+
+                    // Read PPO2 as raw offset? No, let's just log it.
+                    // We disabled Sync for PPO2/Timeout because Read is unreliable
+                }
+
+                // Scuba 2
                 if (cmd === "5B") {
-                    let mode = parseInt(clean.substr(16, 2), 16);
-                    let modeStr =
-                        mode === 0
-                            ? "Scuba"
-                            : mode === 1
-                              ? "Gauge"
-                              : "Freedive";
-                    log(
-                        `   > REPORT: Default Mode = ${mode} (${modeStr})`,
-                        "info",
+                    let time = parseInt(clean.substr(10, 4), 16);
+                    syncInput("scubaTime", time);
+
+                    let safe = parseInt(clean.substr(14, 2), 16);
+                    highlightBtn("safeGroup", "safe" + safe);
+                }
+
+                // Freedive
+                if (cmd === "5D") {
+                    for (let i = 0; i < 6; i++) {
+                        let val = parseInt(clean.substr(6 + i * 2, 2), 16);
+                        syncInput("fd" + (i + 1), val + 5);
+                    }
+                }
+                if (cmd === "60") {
+                    let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
+                    syncInput("fdTimeRange", sec);
+                    upd("fdTimeVal", sec + "s");
+                }
+            }
+
+            async function readAllSettings() {
+                const qs = [
+                    "#58a60200",
+                    "#5f9f0200",
+                    "#5ba30200",
+                    "#5ca20200",
+                    "#5da10200",
+                    "#609e0200",
+                ];
+                for (const q of qs) {
+                    await sendStatic(q, "Read Config");
+                    await new Promise((r) => setTimeout(r, 400));
+                }
+            }
+
+            // --- SYSTEM TEST ---
+            async function runSystemTest() {
+                log("--- STARTING SYSTEM TEST ---", "log-info");
+
+                log("1. Set Safety -> Progressive");
+                await setSafe(2, document.getElementById("safe2"));
+                await new Promise((r) => setTimeout(r, 1000));
+
+                log("2. Set Air -> 32%");
+                document.getElementById("airRange").value = 32;
+                await setAir();
+                await new Promise((r) => setTimeout(r, 1000));
+
+                log("3. Set PPO2 -> 1.6");
+                document.getElementById("ppo2Range").value = 1.6;
+                await setPPO2();
+                await new Promise((r) => setTimeout(r, 1000));
+
+                log("4. Set Timeout -> 30s");
+                document.getElementById("timeoutSel").value = 1; // Index 1
+                await setTimeoutIndex();
+                await new Promise((r) => setTimeout(r, 1000));
+
+                log("5. Set Backlight -> 3");
+                await setBL(5, document.getElementById("bl5"));
+                await new Promise((r) => setTimeout(r, 1000));
+
+                log("--- READING BACK ---", "log-info");
+                await readAllSettings();
+            }
+
+            // SENDERS
+            async function sendStatic(str, desc = "") {
+                let enc = new TextEncoder();
+                await txChar.writeValue(enc.encode(str + "\n"));
+                if (!desc) desc = str;
+                log(`<span class="log-tx">TX: ${desc}</span>`);
+            }
+
+            // Algorithm: Full Sum (Target - (Len + ValBytes))
+            // Used for: Air, PPO2, Timeout, Alarms, FD Time
+            async function sendCalcSum(
+                prefix,
+                targetSum,
+                valHex,
+                lenHex = "02",
+                desc = "",
+            ) {
+                let v = valHex.toLowerCase();
+                let p = prefix.toLowerCase();
+                let payloadBytes = [];
+                payloadBytes.push(parseInt(lenHex, 16));
+                for (let i = 0; i < v.length; i += 2)
+                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
+
+                let sum = payloadBytes.reduce((a, b) => a + b, 0);
+                let checkDec = (targetSum - sum) & 0xff;
+                let checkHex = checkDec
+                    .toString(16)
+                    .padStart(2, "0")
+                    .toLowerCase();
+
+                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
+            }
+
+            // Algorithm: Val Only (Target - ValBytes). No Len.
+            // Used for: Safety Factor
+            async function sendCalcVal(
+                prefix,
+                targetSum,
+                valHex,
+                lenHex = "02",
+                desc = "",
+            ) {
+                let v = valHex.toLowerCase();
+                let p = prefix.toLowerCase();
+                let payloadBytes = [];
+                for (let i = 0; i < v.length; i += 2)
+                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
+                let sum = payloadBytes.reduce((a, b) => a + b, 0);
+                let checkDec = (targetSum - sum) & 0xff;
+                let checkHex = checkDec
+                    .toString(16)
+                    .padStart(2, "0")
+                    .toLowerCase();
+                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
+            }
+
+            // --- FUNCTIONS (VERIFIED TARGETS) ---
+
+            // Backlight: Target 210.
+            function setBL(l, btn) {
+                highlightBtn("blGroup", btn.id);
+                let v = "0" + l;
+                sendCalcSum("2e", 210, v, "02", "Set Backlight " + (l - 2));
+                verify("sys");
+            }
+
+            // Safety: Target 219 (Val Only).
+            function setSafe(s, btn) {
+                highlightBtn("safeGroup", btn.id);
+                let c = (219 - s).toString(16);
+                sendStatic(`#21${c}04000${s}`, "Set Safety " + s);
+                verify("scuba2");
+            }
+
+            // Mode: Static. No Sync.
+            function setMode(m, btn) {
+                highlightBtn("modeGroup", btn.id);
+                let c =
+                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
+                sendStatic(c, "Set Mode");
+            }
+
+            // Timeout: Target 214. Index based (0-3).
+            function setTimeoutIndex() {
+                let idx = parseInt(document.getElementById("timeoutSel").value);
+                // 0=15s, 1=30s, 2=60s, 3=120s? Assuming simple index.
+                let h = idx.toString(16).padStart(4, "0");
+                sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
+                // No verify, read is unreliable
+            }
+
+            // Air: Target 222 (Full Sum)
+            function setAir() {
+                let v = parseInt(document.getElementById("airRange").value);
+                sendCalcSum(
+                    "22",
+                    222,
+                    v.toString(16).padStart(2, "0"),
+                    "02",
+                    "Set Air " + v + "%",
+                );
+                verify("scuba1");
+            }
+
+            // PPO2: Target 211 (Full Sum)
+            function setPPO2() {
+                let v = parseFloat(document.getElementById("ppo2Range").value);
+                sendCalcSum(
+                    "2d",
+                    211,
+                    Math.round(v * 10)
+                        .toString(16)
+                        .padStart(2, "0"),
+                    "02",
+                    "Set PPO2 " + v,
+                );
+                verify("scuba1");
+            }
+
+            // Alarms: Target 217/216 (Full Sum)
+            function setScubaDepth() {
+                let m = parseInt(document.getElementById("scubaDepth").value);
+                sendCalcSum(
+                    "27",
+                    217,
+                    (m * 100 + 1000).toString(16).padStart(4, "0"),
+                    "04",
+                    "Set Depth " + m + "m",
+                );
+                verify("scuba1");
+            }
+            function setScubaTime() {
+                let m = parseInt(document.getElementById("scubaTime").value);
+                sendCalcSum(
+                    "28",
+                    216,
+                    m.toString(16).padStart(4, "0"),
+                    "04",
+                    "Set Time " + m + "min",
+                );
+                verify("scuba2");
+            }
+
+            // FD Time: Target 218 (Full Sum)
+            function setFdTime() {
+                let s = parseInt(document.getElementById("fdTimeRange").value);
+                sendCalcSum(
+                    "26",
+                    218,
+                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
+                    "04",
+                    "Set FD Time " + s + "s",
+                );
+                setTimeout(async () => {
+                    await sendStatic("#609e0200");
+                }, 600);
+            }
+
+            function setFdDepth(idx) {
+                let m = parseInt(document.getElementById("fd" + idx).value);
+                let h = (m - 5).toString(16).padStart(2, "0");
+                let pre = "25",
+                    tgt = 219,
+                    pay = "0a" + h;
+                if (idx === 2) pay = h + "13";
+                if (idx === 3) {
+                    pre = "31";
+                    tgt = 207;
+                    pay = "19" + h;
+                }
+                if (idx === 4) {
+                    pre = "31";
+                    tgt = 207;
+                    pay = h + "14";
+                }
+                if (idx === 5) {
+                    pre = "32";
+                    tgt = 206;
+                    pay = "32" + h;
+                }
+                if (idx === 6) {
+                    pre = "32";
+                    tgt = 206;
+                    pay = h + "1e";
+                }
+                sendCalcSum(
+                    pre,
+                    tgt,
+                    pay,
+                    "04",
+                    "Set FD Depth " + idx + " to " + m + "m",
+                );
+                verify("free");
+            }
+
+            function highlightBtn(grp, id) {
+                document
+                    .getElementById(grp)
+                    .querySelectorAll(".btn-opt")
+                    .forEach((b) => b.classList.remove("selected"));
+                let btn = document.getElementById(id);
+                if (btn) btn.classList.add("selected");
+            }
+            function syncInput(id, val) {
+                let el = document.getElementById(id);
+                if (!isNaN(val) && el) {
+                    el.value = val;
+                    el.parentElement.classList.add("synced");
+                    setTimeout(
+                        () => el.parentElement.classList.remove("synced"),
+                        1000,
                     );
                 }
-                if (cmd === "5C") {
-                    let to = parseInt(clean.substr(10, 4), 16);
-                    log(`   > REPORT: Timeout Index = ${to}`, "info");
-                }
             }
-
-            async function send(cmd, desc) {
-                log(`TX [${desc}]: ${cmd}`, "tx");
-                let enc = new TextEncoder();
-                await tx.writeValue(enc.encode(cmd + "\n"));
-            }
-
-            // --- MATH HELPERS ---
-            // Target: 214 (0xD6). Formula: Target - (Len + ValSum). Len=4.
-            function getTimeoutCmd(idx) {
-                let target = 214;
-                let len = 4;
-                let sum = len + idx;
-                let check = (target - sum) & 0xff;
-                let checkHex = check
-                    .toString(16)
-                    .padStart(2, "0")
-                    .toLowerCase();
-                let valHex = idx.toString(16).padStart(4, "0");
-                return `#2a${checkHex}04${valHex}`;
-            }
-
-            // Target: 210 (0xD2). Formula: Target - (Len + ValSum). Len=2.
-            function getBLCmd(lvl) {
-                let target = 210;
-                let len = 2;
-                let sum = len + lvl;
-                let check = (target - sum) & 0xff;
-                let checkHex = check
-                    .toString(16)
-                    .padStart(2, "0")
-                    .toLowerCase();
-                let valHex = lvl.toString(16).padStart(2, "0");
-                return `#2e${checkHex}02${valHex}`;
-            }
-
-            // --- ACTIONS ---
-            async function readAll() {
-                await send("#5f9f0200", "Read Backlight");
-                await wait(300);
-                await send("#5ba30200", "Read Mode");
-                await wait(300);
-                await send("#5ca20200", "Read Timeout");
-                await wait(300);
-            }
-
-            async function setMode(m) {
-                let cmd =
-                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
-                let name = m === 0 ? "Scuba" : m === 2 ? "Freedive" : "Gauge";
-                await send(cmd, `Set Mode ${name}`);
-            }
-
-            async function setTimeoutIndex() {
-                let idx = parseInt(document.getElementById("selTime").value);
-                await send(getTimeoutCmd(idx), `Set Timeout Idx ${idx}`);
-            }
-
-            async function setBacklight() {
-                let l = parseInt(document.getElementById("inpBL").value);
-                await send(getBLCmd(l), `Set Backlight ${l}`);
-            }
-
-            function wait(ms) {
-                return new Promise((r) => setTimeout(r, ms));
-            }
-
-            // --- THE SYSTEM TEST ---
-            async function runGeneralTest() {
-                log("=== STARTING GENERAL SETTINGS TEST ===", "sys");
-
-                // 1. MODES
-                let modes = [0, 1, 2];
-                let mNames = ["Scuba", "Gauge", "Freedive"];
-                for (let i = 0; i < 3; i++) {
-                    log(`--- Testing Mode: ${mNames[i]} ---`, "sys");
-                    await setMode(modes[i]);
-                    await wait(800);
-                    await send("#5ba30200", "Verify Mode");
-                    await wait(800);
-                }
-
-                // 2. TIMEOUTS (Testing Indices 0-3)
-                for (let i = 0; i <= 3; i++) {
-                    log(`--- Testing Timeout Index: ${i} ---`, "sys");
-                    let cmd = getTimeoutCmd(i);
-                    await send(cmd, `Set Timeout ${i}`);
-                    await wait(800);
-                    await send("#5ca20200", "Verify Timeout");
-                    await wait(800);
-                }
-
-                // 3. BACKLIGHT (1-5)
-                for (let i = 1; i <= 5; i++) {
-                    log(`--- Testing Backlight: ${i} ---`, "sys");
-                    let cmd = getBLCmd(i);
-                    await send(cmd, `Set BL ${i}`);
-                    await wait(800);
-                    await send("#5f9f0200", "Verify Backlight");
-                    await wait(800);
-                }
-                log("=== TEST COMPLETE ===", "sys");
+            function verify(type) {
+                let cmd = "";
+                if (type === "sys") cmd = "#5f9f0200";
+                if (type === "scuba1") cmd = "#5ca20200";
+                if (type === "scuba2") cmd = "#5ba30200";
+                if (type === "free") cmd = "#5da10200";
+                if (cmd)
+                    setTimeout(async () => {
+                        await sendStatic(cmd, "Reading...");
+                    }, 600);
             }
         </script>
     </body>
