@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v37 (Timeout Fix)</title>
+        <title>Cosmiq 5 Manager v40 (Safety Algo Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -544,7 +544,8 @@
                         "
                     >
                         Use this tool to find missing settings. <br />
-                        Confirmed: $5B (Time/Timeout/Date/Units), $5C (Mode).
+                        Confirmed: $5B (Time/Timeout/Date/Units), $5C (Mode),
+                        $5D (PPO2).
                     </p>
                     <button
                         class="btn-main"
@@ -591,7 +592,8 @@
 
             // UI Init
             const fdDiv = document.getElementById("fdAlarms");
-            for (let i = 1; i <= 6; i++) {
+            // Only 5 alarms, as 6th byte is PPO2
+            for (let i = 1; i <= 5; i++) {
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
@@ -781,10 +783,19 @@
                 }
 
                 if (cmd === "5D") {
-                    // Freedive Depth
-                    for (let i = 0; i < 6; i++) {
+                    // Freedive Depth & PPO2
+                    // Bytes 0-4: Alarms 1-5
+                    for (let i = 0; i < 5; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
+                    }
+                    // Byte 5 (16-17): PPO2
+                    let ppo2Raw = parseInt(clean.substr(16, 2), 16);
+                    if (!isNaN(ppo2Raw)) {
+                        let ppo2 = ppo2Raw / 10;
+                        document.getElementById("ppo2Range").value = ppo2;
+                        upd("ppo2Val", ppo2.toFixed(1));
+                        log("> Parsed PPO2: " + ppo2.toFixed(1));
                     }
                 }
                 if (cmd === "60") {
@@ -870,6 +881,14 @@
             async function bruteForceSafety() {
                 log("--- STARTING SAFETY BRUTEFORCE ---", "log-info");
 
+                // Attempt 0: 2 Bytes payload (Algo A - Standardized)
+                // Payload: 00 02. Length: 02. Algo A (Target 219)
+                // Checksum = 219 - 2 - 2 = 215 (D7).
+                // Packet: #21D7020002
+                log("Attempt 0: 2 Byte (Algo A - Standard)");
+                await sendStatic("#21D7020002");
+                await new Promise((r) => setTimeout(r, 500));
+
                 // Attempt 1: 1 Byte payload
                 // Payload: 02. Length: 01. Algo B (Target 219)
                 // Checksum = 219 - 2 = 217 (D9).
@@ -932,15 +951,13 @@
             // --- FUNCTION FIXES ---
 
             // Safety Factor: Target 219 (Algo B)
-            // Fix 2: Packet length must match data length!
-            // Length is 04 (4 bytes), but we were sending 3 bytes (00000s).
-            // New Payload: 00 00 00 0s (4 bytes).
-            // TargetA = TargetB (219) + Len (4) = 223.
+            // Fix 3: Standardize to Algo A, 2 Bytes (matching other cmds)
+            // Target 219, Len 2, Payload 00 0[Val].
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
-                // Pad to 4 bytes: 00 00 00 0s
-                let valStr = "0000000" + s;
-                sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
+                // Standard 2-byte payload: "000s"
+                let valStr = "000" + s;
+                sendCalcSum("21", 219, valStr, "02", "Set Safety " + s);
                 verify("scuba2");
             }
 
@@ -953,6 +970,7 @@
 
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
+                // Fixed logic and removed duplicate var declaration
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c, "Set Mode");
@@ -989,7 +1007,7 @@
                     "02",
                     "Set PPO2 " + v,
                 );
-                verify("scuba1");
+                verify("free"); // PPO2 is in 5D (Free)
             }
 
             function setUnits(m) {
@@ -1059,11 +1077,7 @@
                     tgt = 206;
                     pay = "32" + h;
                 }
-                if (idx === 6) {
-                    pre = "32";
-                    tgt = 206;
-                    pay = h + "1e";
-                }
+                // Index 6 removed as it overlaps PPO2
                 sendCalcSum(
                     pre,
                     tgt,
