@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v41 (Solved)</title>
+        <title>Cosmiq 5 Manager v42 (Gold Master)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -436,22 +436,22 @@
                     >
                         <button
                             class="btn-opt"
-                            id="safe1"
-                            onclick="setSafe(1, this)"
+                            id="safe0"
+                            onclick="setSafe(0, this)"
                         >
                             Consv
                         </button>
                         <button
                             class="btn-opt"
-                            id="safe2"
-                            onclick="setSafe(2, this)"
+                            id="safe1"
+                            onclick="setSafe(1, this)"
                         >
                             Norm
                         </button>
                         <button
                             class="btn-opt"
-                            id="safe3"
-                            onclick="setSafe(3, this)"
+                            id="safe2"
+                            onclick="setSafe(2, this)"
                         >
                             Prog
                         </button>
@@ -581,7 +581,6 @@
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
                 let lbl = "Alarm " + i;
-                if (i === 6) lbl += " (Write Only)";
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">${lbl}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
@@ -724,7 +723,7 @@
                     // Scuba 2
                     // Byte 0 (6-7): Safety Factor
                     let safe = parseInt(clean.substr(6, 2), 16);
-                    if (safe >= 1 && safe <= 3) {
+                    if (safe >= 0 && safe <= 2) {
                         highlightBtn("safeGroup", "safe" + safe);
                         log("> Parsed Safety: " + safe);
                     }
@@ -785,10 +784,18 @@
                     }
                 }
                 if (cmd === "60") {
-                    // Freedive Time
+                    // Freedive Time & Alarm 6
+                    // Byte 0 (6-7): Time Factor
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     syncInput("fdTimeRange", sec);
                     upd("fdTimeVal", sec + "s");
+
+                    // Byte 2 (10-11): Alarm 6
+                    let fda6 = parseInt(clean.substr(10, 2), 16);
+                    if (!isNaN(fda6)) {
+                        syncInput("fd6", fda6 + 5);
+                        log("> Parsed FD Alarm 6: " + (fda6 + 5) + "m");
+                    }
                 }
             }
 
@@ -837,7 +844,7 @@
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---", "log-info");
                 log("1. Set Safety -> Progressive");
-                await setSafe(3, document.getElementById("safe3")); // Changed to 3
+                await setSafe(2, document.getElementById("safe2")); // Fixed index
                 await new Promise((r) => setTimeout(r, 800));
 
                 log("2. Set Air -> 32%");
@@ -884,7 +891,7 @@
             // --- FUNCTION FIXES ---
 
             // Safety Factor: Target 223 (Algo A)
-            // Log verified: Consv=1, Norm=2, Prog=3 (assumed)
+            // Log verified: Consv=0, Norm=1, Prog=2
             // Packet: #21[Chk]04000[Val]
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
@@ -1009,7 +1016,6 @@
                     pay = "32" + h;
                 }
 
-                // Alarm 6: Valid write, but not readable via $5D (masked by PPO2)
                 if (idx === 6) {
                     pre = "32";
                     tgt = 206;
@@ -1025,6 +1031,10 @@
                 );
 
                 if (idx < 6) verify("free");
+                if (idx === 6)
+                    setTimeout(async () => {
+                        await sendStatic("#609e0200", "Verify FD6");
+                    }, 600);
             }
 
             function highlightBtn(grp, id) {
