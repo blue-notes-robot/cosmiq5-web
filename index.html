@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v9 (Fixed Sync)</title>
+        <title>Cosmiq 5 Manager v10</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -100,6 +100,7 @@
                 border-radius: 12px;
                 margin-bottom: 12px;
                 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+                position: relative;
             }
             .card h3 {
                 margin: 0 0 12px 0;
@@ -183,6 +184,19 @@
             }
             .danger {
                 border-left: 3px solid var(--red);
+            }
+
+            /* Highlight animation for synced fields */
+            @keyframes flash {
+                0% {
+                    background-color: #d4edda;
+                }
+                100% {
+                    background-color: white;
+                }
+            }
+            .synced {
+                animation: flash 1s ease-out;
             }
 
             #log {
@@ -356,10 +370,8 @@
                     <h3 style="color: var(--red)">Advanced</h3>
                     <span class="label">High Salinity Mode</span>
                     <div class="warn">
-                        This is an advanced setting. Please only use this
-                        setting when diving in highly saline water. Your depth
-                        reading will be slightly shallower if used in normal
-                        ocean water.
+                        Use only in highly saline water. Normal water readings
+                        will be incorrect.
                     </div>
                     <div class="grid">
                         <button
@@ -524,8 +536,10 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
+            // SMART CONNECTION LOGIC
             async function connect() {
                 try {
+                    log("Scanning...");
                     dev = await navigator.bluetooth.requestDevice({
                         filters: [
                             { namePrefix: "COSMIQ" },
@@ -586,98 +600,102 @@
                 log("Disconnected.");
             }
 
-            // --- THE FIXED DECODER (ASCII) ---
+            // CORRECTED DECODER (V10)
             function handleRX(event) {
-                // 1. Decode as TEXT (Since device talks in ASCII strings)
                 let dec = new TextDecoder("utf-8");
-                let text = dec.decode(event.target.value);
-                // Remove newline/garbage
-                text = text.trim();
-
+                let text = dec.decode(event.target.value).trim();
                 log("RX: " + text);
 
-                if (!text.startsWith("$")) return; // Responses start with $ (0x24)
+                if (!text.startsWith("$")) return;
+                let cmd = text.substr(1, 2).toLowerCase();
 
-                // Parse String (e.g. "$5F8E0C000007")
-                let cmd = text.substr(1, 2).toLowerCase(); // "5f"
+                // Packet Structure Note:
+                // Log shows: $5F 8E 0C 00 00 07...
+                // Indices:   01 23 45 67 89 01... (Char Index)
+                // So: $ is 0. 5F is 1,2.
 
-                // Note: Offsets are based on Hex CHARACTERS, not bytes.
-                // Structure: $[CMD][CHECK][LEN][DATA...]
-                // Chars:     0 1-2  3-4    5-6  7...
-
+                // CMD 5F (Backlight)
                 if (cmd === "5f") {
-                    // Backlight
-                    // Last char is value
-                    let valStr = text.slice(-1);
+                    // Backlight is at Char Index 11-12
+                    let valStr = text.substr(11, 2);
                     let bl = parseInt(valStr, 16);
-                    highlightBtn("blGroup", "bl" + bl);
+                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
                 }
 
+                // CMD 5C (Scuba 1)
                 if (cmd === "5c") {
-                    // Scuba 1 (Depth, Timeout, Air, PPO2)
-                    // Payload starts at index 7.
-                    // Data: Depth(4), Timeout(4), Air(2), PPO2(2)
-
-                    // Depth: Chars 7,8,9,10
+                    // Depth: Index 7 (4 chars)
                     let dHex = text.substr(7, 4);
                     let depth = (parseInt(dHex, 16) - 1000) / 100;
-                    document.getElementById("scubaDepth").value = depth;
+                    if (!isNaN(depth)) {
+                        document.getElementById("scubaDepth").value = depth;
+                        document
+                            .getElementById("scubaDepth")
+                            .parentElement.classList.add("synced");
+                    }
 
-                    // Timeout: Chars 11,12,13,14
+                    // Timeout: Index 11 (4 chars)
                     let tHex = text.substr(11, 4);
                     let time = parseInt(tHex, 16);
-                    document.getElementById("timeoutSel").value = time;
+                    if (!isNaN(time))
+                        document.getElementById("timeoutSel").value = time;
 
-                    // Air: Chars 15,16
+                    // Air: Index 15 (2 chars)
                     let air = parseInt(text.substr(15, 2), 16);
-                    document.getElementById("airRange").value = air;
-                    upd("airVal", air + "%");
+                    if (!isNaN(air)) {
+                        document.getElementById("airRange").value = air;
+                        upd("airVal", air + "%");
+                    }
 
-                    // PPO2: Chars 17,18
+                    // PPO2: Index 17 (2 chars)
                     let ppo2 = parseInt(text.substr(17, 2), 16) / 10;
                     if (ppo2 < 1.0) ppo2 = 1.4;
-                    document.getElementById("ppo2Range").value = ppo2;
-                    upd("ppo2Val", ppo2);
-                }
-
-                if (cmd === "5b") {
-                    // Scuba 2
-                    // Time(4), Safety(2), Mode(2)
-                    let tHex = text.substr(7, 4); // Index 7, length 4? No, Check log.
-                    // Log: 5B C9 0C 001E 01 01
-                    // 5B (Cmd) C9 (Check) 0C (Len 12)
-                    // Payload chars start at index 7.
-
-                    // Time Alarm (4 chars)
-                    let time = parseInt(text.substr(7, 4), 16);
-                    document.getElementById("scubaTime").value = time;
-
-                    // Safety (2 chars)
-                    let safe = parseInt(text.substr(11, 2), 16);
-                    highlightBtn("safeGroup", "safe" + safe);
-
-                    // Mode (2 chars)
-                    let mode = parseInt(text.substr(13, 2), 16);
-                    highlightBtn("modeGroup", "mode" + mode);
-                }
-
-                if (cmd === "5d") {
-                    // Free Depths (6 alarms * 2 chars)
-                    for (let i = 0; i < 6; i++) {
-                        let hex = text.substr(7 + i * 2, 2);
-                        let val = parseInt(hex, 16);
-                        document.getElementById("fd" + (i + 1)).value = val + 5;
+                    if (!isNaN(ppo2)) {
+                        document.getElementById("ppo2Range").value = ppo2;
+                        upd("ppo2Val", ppo2);
                     }
                 }
 
+                // CMD 5B (Scuba 2)
+                if (cmd === "5b") {
+                    // Note: Log had '007E' padding at index 7.
+                    // Real data starts at index 11.
+
+                    // Time Alarm: Index 11 (4 chars)
+                    let time = parseInt(text.substr(11, 4), 16);
+                    if (!isNaN(time))
+                        document.getElementById("scubaTime").value = time;
+
+                    // Safety: Index 15 (2 chars)
+                    let safe = parseInt(text.substr(15, 2), 16);
+                    if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
+
+                    // Mode: Index 17 (2 chars)
+                    let mode = parseInt(text.substr(17, 2), 16);
+                    if (!isNaN(mode)) highlightBtn("modeGroup", "mode" + mode);
+                }
+
+                // CMD 5D (Freedive Depths)
+                if (cmd === "5d") {
+                    // Index 7 start. 2 chars each.
+                    for (let i = 0; i < 6; i++) {
+                        let hex = text.substr(7 + i * 2, 2);
+                        let val = parseInt(hex, 16);
+                        if (!isNaN(val))
+                            document.getElementById("fd" + (i + 1)).value =
+                                val + 5;
+                    }
+                }
+
+                // CMD 60 (Freedive Time)
                 if (cmd === "60") {
-                    // Free Time
-                    // Payload is just 2 chars? Log: 602A08 19 14231E...
-                    // Wait, log says 60 2A 08 (Len 8) 19 (Value 25)
+                    // Index 7 (2 chars).
                     let hex = text.substr(7, 2);
                     let sec = parseInt(hex, 16) * 5 + 30;
-                    document.getElementById("fdTimeRange").value = sec;
-                    upd("fdTimeVal", sec + "s");
+                    if (!isNaN(sec)) {
+                        document.getElementById("fdTimeRange").value = sec;
+                        upd("fdTimeVal", sec + "s");
+                    }
                 }
             }
 
@@ -696,7 +714,7 @@
                 }
             }
 
-            // SENDERS (TEXT MODE)
+            // SENDERS
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
