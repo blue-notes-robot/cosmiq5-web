@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Deepblu Cosmiq 5 Manager</title>
+        <title>Cosmiq 5 Manager (Verbose)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -145,9 +145,10 @@
                 color: var(--blue);
                 border: 1px solid #90caf9;
             }
-            /* Flash animation for sync */
+
+            /* Sync Flash Animation */
             .synced {
-                animation: flashGreen 1s ease-out;
+                animation: flashGreen 1.5s ease-out;
             }
             @keyframes flashGreen {
                 0% {
@@ -190,16 +191,19 @@
                 font-size: 13px;
             }
 
+            /* LOGGING RESTORED */
             #log {
                 font-family: monospace;
-                font-size: 10px;
-                color: #aaa;
-                margin-top: 30px;
-                text-align: center;
-                height: 80px;
+                font-size: 11px;
+                color: #2ecc71;
+                background: #212529;
+                margin-top: 20px;
+                text-align: left;
+                height: 150px;
                 overflow-y: scroll;
-                border-top: 1px solid #eee;
-                padding-top: 10px;
+                padding: 10px;
+                border-radius: 8px;
+                white-space: pre-wrap;
             }
         </style>
     </head>
@@ -299,7 +303,7 @@
                             "
                         >
                             <option value="0" disabled selected>
-                                -- Select --
+                                -- Syncing --
                             </option>
                             <option value="5">5 Seconds</option>
                             <option value="10">10 Seconds</option>
@@ -464,7 +468,7 @@
             </div>
         </div>
 
-        <div id="log">Ready.</div>
+        <div id="log">Waiting for connection...</div>
 
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
@@ -489,10 +493,12 @@
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
             }
+
             function log(m) {
                 console.log(m);
                 const el = document.getElementById("log");
-                el.innerText = "> " + m + "\n" + el.innerText;
+                el.innerText += "\n" + m;
+                el.scrollTop = el.scrollHeight;
             }
 
             // CONNECT
@@ -566,19 +572,26 @@
                 let text = dec.decode(event.target.value);
                 let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
+                // LOG RAW DATA
+                log("RX: " + text.trim());
+
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
                 // Backlight
                 if (cmd === "5F") {
                     let bl = parseInt(clean.substr(10, 2), 16);
-                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
+                    if (!isNaN(bl)) {
+                        highlightBtn("blGroup", "bl" + bl);
+                        log("> Parsed Backlight: " + bl);
+                    }
                 }
 
                 // Scuba 1
                 if (cmd === "5C") {
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
+                    log("> Parsed Depth: " + depth + "m");
 
                     let time = parseInt(clean.substr(10, 4), 16);
                     if (!isNaN(time)) {
@@ -606,12 +619,14 @@
                 if (cmd === "5B") {
                     let time = parseInt(clean.substr(10, 4), 16);
                     syncInput("scubaTime", time);
+                    log("> Parsed Time Alarm: " + time);
 
                     let safe = parseInt(clean.substr(14, 2), 16);
                     highlightBtn("safeGroup", "safe" + safe);
 
                     let mode = parseInt(clean.substr(16, 2), 16);
                     highlightBtn("modeGroup", "mode" + mode);
+                    log("> Parsed Mode: " + mode);
                 }
 
                 // Freedive
@@ -620,17 +635,20 @@
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
                     }
+                    log("> Parsed Freedive Depths");
                 }
                 if (cmd === "60") {
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     if (!isNaN(sec)) {
                         document.getElementById("fdTimeRange").value = sec;
                         upd("fdTimeVal", sec + "s");
+                        log("> Parsed Freedive Time: " + sec + "s");
                     }
                 }
             }
 
             async function readAllSettings() {
+                // Slower delay (350ms) to ensure no missed packets
                 const qs = [
                     "#58a60200",
                     "#5f9f0200",
@@ -641,7 +659,7 @@
                 ];
                 for (const q of qs) {
                     await sendStatic(q);
-                    await new Promise((r) => setTimeout(r, 200));
+                    await new Promise((r) => setTimeout(r, 350));
                 }
             }
 
@@ -675,6 +693,7 @@
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
+                log("TX: " + str);
             }
 
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
@@ -686,7 +705,6 @@
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec.toString(16).padStart(2, "0");
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
-                log("Sent: " + prefix + "...");
             }
 
             // MAPPINGS
