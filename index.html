@@ -3,12 +3,11 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v16 (Verified)</title>
+        <title>Cosmiq 5 Manager v17 (Stable)</title>
         <style>
             :root {
                 --blue: #007bff;
                 --green: #28a745;
-                --red: #dc3545;
                 --bg: #f8f9fa;
                 --text: #212529;
             }
@@ -112,8 +111,6 @@
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
                 transition: background 0.3s;
             }
-
-            /* Error Flash Animation */
             .card.error {
                 animation: flashRed 0.5s ease-in-out;
             }
@@ -498,7 +495,6 @@
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
 
-            // UI Generation
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
@@ -526,7 +522,6 @@
                 el.scrollTop = el.scrollHeight;
             }
 
-            // CONNECT
             async function connect() {
                 try {
                     log("Scanning...");
@@ -542,7 +537,6 @@
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
 
-                    // Smart Discovery
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
@@ -591,13 +585,12 @@
                 log("Disconnected.");
             }
 
-            // DECODER
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
                 let text = dec.decode(event.target.value);
                 let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                // NACK DETECTION (0x80 header)
+                // NACK Check
                 if (clean.startsWith("80")) {
                     log("!!! COMMAND REJECTED !!!", "log-err");
                     document.querySelectorAll(".card.active").forEach((c) => {
@@ -654,8 +647,9 @@
                     let safe = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
 
-                    let mode = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(mode)) highlightBtn("modeGroup", "mode" + mode);
+                    // DISABLED MODE SYNC to avoid "False Gauge" issue
+                    // let mode = parseInt(clean.substr(16, 2), 16);
+                    // if(!isNaN(mode)) highlightBtn('modeGroup', 'mode'+mode);
                 }
 
                 if (cmd === "5D") {
@@ -688,9 +682,6 @@
                 }
             }
 
-            // AUTO-VERIFY (The Logic Loop)
-            // When we write a setting, we wait 500ms then read that section back
-            // to confirm it stuck.
             async function verify(type) {
                 let cmd = "";
                 if (type === "sys") cmd = "#5f9f0200";
@@ -702,11 +693,10 @@
                     setTimeout(async () => {
                         log("Verifying...", "log-tx");
                         await sendStatic(cmd);
-                    }, 600); // 600ms wait
+                    }, 600);
                 }
             }
 
-            // SENDERS
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
@@ -724,7 +714,6 @@
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
             }
 
-            // HELPERS & MAPPINGS
             function syncInput(id, val) {
                 let el = document.getElementById(id);
                 if (!isNaN(val) && el) {
@@ -749,13 +738,12 @@
                 }
             }
 
-            // Functions with Verify Trigger
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c);
-                verify("scuba2");
+                // Don't verify Mode to avoid bad sync
             }
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
@@ -766,8 +754,7 @@
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                // Fixed typo: was #21dd...
-                sendStatic(`#21d${c}04000${s}`);
+                sendStatic(`#21db${c}04000${s}`); // Fixed typo: single 'd' prefix
                 verify("scuba2");
             }
 
@@ -815,7 +802,6 @@
                     "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
                     "04",
                 );
-                // verify('free'); // Note: Freedive Time read is #60, added below
                 setTimeout(async () => {
                     await sendStatic("#609e0200");
                 }, 600);
