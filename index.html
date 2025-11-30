@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v23 (Fixed)</title>
+        <title>Cosmiq 5 Manager v24</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -182,7 +182,7 @@
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager v23</h1>
+            <h1>Cosmiq 5 Manager v24</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
@@ -195,7 +195,7 @@
             onclick="runSystemTest()"
             style="display: none"
         >
-            RUN FULL SYSTEM TEST
+            RUN SYSTEM TEST
         </button>
         <button
             id="disconnectBtn"
@@ -510,14 +510,15 @@
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
-                    let ppo2 = parseInt(clean.substr(16, 2), 16) / 10;
-                    if (ppo2 < 1.0) ppo2 = 1.4;
-                    if (!isNaN(ppo2)) {
-                        document.getElementById("ppo2Range").value = ppo2;
-                        upd("ppo2Val", ppo2);
-                    }
+
+                    // DEBUGGING PPO2 PARSING
+                    let ppo2Byte = parseInt(clean.substr(16, 2), 16);
+                    // Note: We are temporarily showing Raw ID for calibration
+                    document.getElementById("ppo2Range").value = 1.4; // Default safe
+                    upd("ppo2Val", "Raw:" + ppo2Byte);
+
                     log(
-                        `> Parsed: D:${depth}m T:${time}s Air:${air}% PPO2:${ppo2}`,
+                        `> Parsed: D:${depth}m T:${time}s Air:${air}% PPO2(Raw):${ppo2Byte}`,
                     );
                 }
                 if (cmd === "5b") {
@@ -525,13 +526,11 @@
                     syncInput("scubaTime", time);
                     let safe = parseInt(clean.substr(14, 2), 16);
                     highlightBtn("safeGroup", "safe" + safe);
-                    log(`> Parsed: ScubaTime:${time}min Safety:${safe}`);
                 }
                 if (cmd === "60") {
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     syncInput("fdTimeRange", sec);
                     upd("fdTimeVal", sec + "s");
-                    log(`> Parsed: FD Time:${sec}s`);
                 }
             }
 
@@ -545,7 +544,7 @@
                     "#609e0200",
                 ];
                 for (const q of qs) {
-                    await sendStatic(q, "Read");
+                    await sendStatic(q, "Read Config");
                     await new Promise((r) => setTimeout(r, 400));
                 }
             }
@@ -573,6 +572,15 @@
                 await setTimeoutSec();
                 await new Promise((r) => setTimeout(r, 800));
 
+                log("5. Set Backlight -> 3");
+                await setBL(5, document.getElementById("bl5"));
+                await new Promise((r) => setTimeout(r, 800));
+
+                log("6. Set FD Time -> 60s");
+                document.getElementById("fdTimeRange").value = 60;
+                await setFdTime();
+                await new Promise((r) => setTimeout(r, 800));
+
                 log("--- VERIFYING ---");
                 await readAllSettings();
             }
@@ -585,6 +593,7 @@
                 log(`<span class="tx-desc">TX: ${desc}</span> (${str})`);
             }
 
+            // ALGORITHM 1: Full Sum (Target - (Len + Val)). Used for Alarms/Timeout/Air.
             async function sendCalcSum(
                 prefix,
                 targetSum,
@@ -606,12 +615,36 @@
                     .padStart(2, "0")
                     .toLowerCase();
 
-                let cmd = `#${p}${checkHex}${lenHex}${v}`;
-                await sendStatic(cmd, desc);
+                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
+            }
+
+            // ALGORITHM 2: Val Sum Only (Target - Val). Used for PPO2, Safety.
+            async function sendCalcVal(
+                prefix,
+                targetSum,
+                valHex,
+                lenHex = "02",
+                desc = "",
+            ) {
+                let v = valHex.toLowerCase();
+                let p = prefix.toLowerCase();
+                let payloadBytes = [];
+                // NO LEN
+                for (let i = 0; i < v.length; i += 2)
+                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
+
+                let sum = payloadBytes.reduce((a, b) => a + b, 0);
+                let checkDec = (targetSum - sum) & 0xff;
+                let checkHex = checkDec
+                    .toString(16)
+                    .padStart(2, "0")
+                    .toLowerCase();
+
+                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
             function describe(cmd) {
-                if (cmd.includes("21d")) return "Set Safety";
+                if (cmd.includes("21")) return "Set Safety";
                 if (cmd.includes("22")) return "Set Air";
                 if (cmd.includes("2d")) return "Set PPO2";
                 if (cmd.includes("2a")) return "Set Timeout";
@@ -620,24 +653,65 @@
                 return "Command";
             }
 
-            // FUNCTIONS (FIXED TARGETS & TYPOS)
-            function setMode(m, btn) {
-                highlightBtn("modeGroup", btn.id);
-                let c =
-                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
-                sendStatic(c, "Set Mode");
-            }
+            // --- FUNCTION MAPPINGS (FIXED) ---
+
+            // Backlight Target: 208 (0xD0)
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
-                let c = (206 - l).toString(16);
+                let c = (208 - l).toString(16);
                 sendStatic(`#2ec${c}020${l}`, "Set Backlight " + l);
                 verify("sys");
             }
+
+            // Safety Target: 219 (0xDB) - Val Only
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21d${c}04000${s}`, "Set Safety " + s);
+                sendStatic(`#21${c}04000${s}`, "Set Safety " + s);
                 verify("scuba2");
+            }
+
+            // Air Target: 222 (0xDE) - Full Sum
+            function setAir() {
+                let v = parseInt(document.getElementById("airRange").value);
+                sendCalcSum(
+                    "22",
+                    222,
+                    v.toString(16).padStart(2, "0"),
+                    "02",
+                    "Set Air " + v + "%",
+                );
+                verify("scuba1");
+            }
+
+            // PPO2 Target: 225 (0xE1) - Full Sum
+            function setPPO2() {
+                let v = parseFloat(document.getElementById("ppo2Range").value);
+                sendCalcSum(
+                    "2d",
+                    225,
+                    Math.round(v * 10)
+                        .toString(16)
+                        .padStart(2, "0"),
+                    "02",
+                    "Set PPO2 " + v,
+                );
+                verify("scuba1");
+            }
+
+            // FD Time Target: 213 (0xD5) - Full Sum. (Based on NACK log logic)
+            function setFdTime() {
+                let s = parseInt(document.getElementById("fdTimeRange").value);
+                sendCalcSum(
+                    "26",
+                    213,
+                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
+                    "04",
+                    "Set FD Time " + s + "s",
+                );
+                setTimeout(async () => {
+                    await sendStatic("#609e0200");
+                }, 600);
             }
 
             function setTimeoutSec() {
@@ -673,45 +747,6 @@
                 );
                 verify("scuba2");
             }
-            function setFdTime() {
-                let s = parseInt(document.getElementById("fdTimeRange").value);
-                sendCalcSum(
-                    "26",
-                    209,
-                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
-                    "04",
-                    "Set FD Time " + s + "s",
-                );
-                setTimeout(async () => {
-                    await sendStatic("#609e0200");
-                }, 600);
-            }
-
-            // FIXED TARGETS (222 for Air, 211 for PPO2) - Full Sum Algorithm
-            function setAir() {
-                let v = parseInt(document.getElementById("airRange").value);
-                sendCalcSum(
-                    "22",
-                    222,
-                    v.toString(16).padStart(2, "0"),
-                    "02",
-                    "Set Air " + v + "%",
-                );
-                verify("scuba1");
-            }
-            function setPPO2() {
-                let v = parseFloat(document.getElementById("ppo2Range").value);
-                sendCalcSum(
-                    "2d",
-                    211,
-                    Math.round(v * 10)
-                        .toString(16)
-                        .padStart(2, "0"),
-                    "02",
-                    "Set PPO2 " + v,
-                );
-                verify("scuba1");
-            }
 
             function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
@@ -740,7 +775,13 @@
                     tgt = 206;
                     pay = h + "1e";
                 }
-                sendCalcSum(pre, tgt, pay, "04", "Set FD Depth " + m + "m");
+                sendCalcSum(
+                    pre,
+                    tgt,
+                    pay,
+                    "04",
+                    "Set FD Depth " + idx + " to " + m + "m",
+                );
                 verify("free");
             }
 
@@ -772,8 +813,14 @@
                 if (type === "free") cmd = "#5da10200";
                 if (cmd)
                     setTimeout(async () => {
-                        await sendStatic(cmd);
+                        await sendStatic(cmd, "Verify");
                     }, 600);
+            }
+            function setMode(m, btn) {
+                highlightBtn("modeGroup", btn.id);
+                let c =
+                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
+                sendStatic(c, "Set Mode");
             }
         </script>
     </body>
