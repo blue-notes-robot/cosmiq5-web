@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v24</title>
+        <title>Cosmiq 5 Manager v25 (Golden Master)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -182,7 +182,7 @@
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager v24</h1>
+            <h1>Cosmiq 5 Manager v25</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
@@ -510,15 +510,10 @@
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
-
-                    // DEBUGGING PPO2 PARSING
-                    let ppo2Byte = parseInt(clean.substr(16, 2), 16);
-                    // Note: We are temporarily showing Raw ID for calibration
-                    document.getElementById("ppo2Range").value = 1.4; // Default safe
-                    upd("ppo2Val", "Raw:" + ppo2Byte);
-
+                    // PPO2 Read Logic (Still raw)
+                    let ppo2 = parseInt(clean.substr(16, 2), 16);
                     log(
-                        `> Parsed: D:${depth}m T:${time}s Air:${air}% PPO2(Raw):${ppo2Byte}`,
+                        `> Parsed: D:${depth}m T:${time}s Air:${air}% PPO2(Byte):${ppo2}`,
                     );
                 }
                 if (cmd === "5b") {
@@ -553,30 +548,30 @@
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---");
 
-                log("1. Set Safety -> Progressive");
+                log("1. Safety -> Progressive");
                 await setSafe(2, document.getElementById("safe2"));
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("2. Set Air -> 32%");
+                log("2. Air -> 32%");
                 document.getElementById("airRange").value = 32;
                 await setAir();
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("3. Set PPO2 -> 1.5");
-                document.getElementById("ppo2Range").value = 1.5;
+                log("3. PPO2 -> 1.6");
+                document.getElementById("ppo2Range").value = 1.6;
                 await setPPO2();
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("4. Set Timeout -> 30s");
+                log("4. Timeout -> 30s");
                 document.getElementById("timeoutSel").value = 30;
                 await setTimeoutSec();
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("5. Set Backlight -> 3");
+                log("5. Backlight -> 3");
                 await setBL(5, document.getElementById("bl5"));
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("6. Set FD Time -> 60s");
+                log("6. FD Time -> 60s");
                 document.getElementById("fdTimeRange").value = 60;
                 await setFdTime();
                 await new Promise((r) => setTimeout(r, 800));
@@ -593,7 +588,7 @@
                 log(`<span class="tx-desc">TX: ${desc}</span> (${str})`);
             }
 
-            // ALGORITHM 1: Full Sum (Target - (Len + Val)). Used for Alarms/Timeout/Air.
+            // ALGO 1: Full Sum (Target - (Len + Val)). Alarms/Timeout/Air/Backlight/FD Time/PPO2
             async function sendCalcSum(
                 prefix,
                 targetSum,
@@ -618,7 +613,7 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
-            // ALGORITHM 2: Val Sum Only (Target - Val). Used for PPO2, Safety.
+            // ALGO 2: Val Sum Only (Target - Val). Safety Only.
             async function sendCalcVal(
                 prefix,
                 targetSum,
@@ -629,17 +624,14 @@
                 let v = valHex.toLowerCase();
                 let p = prefix.toLowerCase();
                 let payloadBytes = [];
-                // NO LEN
                 for (let i = 0; i < v.length; i += 2)
                     payloadBytes.push(parseInt(v.substr(i, 2), 16));
-
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec
                     .toString(16)
                     .padStart(2, "0")
                     .toLowerCase();
-
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
@@ -653,17 +645,23 @@
                 return "Command";
             }
 
-            // --- FUNCTION MAPPINGS (FIXED) ---
+            // FUNCTIONS (PROVEN TARGETS)
+            function setMode(m, btn) {
+                highlightBtn("modeGroup", btn.id);
+                let c =
+                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
+                sendStatic(c, "Set Mode");
+            }
 
-            // Backlight Target: 208 (0xD0)
+            // BACKLIGHT: Target 210 (Full Sum)
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
-                let c = (208 - l).toString(16);
-                sendStatic(`#2ec${c}020${l}`, "Set Backlight " + l);
+                let v = "0" + l;
+                sendCalcSum("2e", 210, v, "02", "Set Backlight " + l);
                 verify("sys");
             }
 
-            // Safety Target: 219 (0xDB) - Val Only
+            // SAFETY: Target 219 (Val Only)
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
@@ -671,7 +669,20 @@
                 verify("scuba2");
             }
 
-            // Air Target: 222 (0xDE) - Full Sum
+            // TIMEOUT: Target 214 (Full Sum)
+            function setTimeoutSec() {
+                let s = parseInt(document.getElementById("timeoutSel").value);
+                sendCalcSum(
+                    "2a",
+                    214,
+                    s.toString(16).padStart(4, "0"),
+                    "04",
+                    "Set Timeout " + s + "s",
+                );
+                verify("scuba1");
+            }
+
+            // AIR: Target 222 (Full Sum)
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 sendCalcSum(
@@ -684,12 +695,12 @@
                 verify("scuba1");
             }
 
-            // PPO2 Target: 225 (0xE1) - Full Sum
+            // PPO2: Target 211 (Full Sum)
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalcSum(
                     "2d",
-                    225,
+                    211,
                     Math.round(v * 10)
                         .toString(16)
                         .padStart(2, "0"),
@@ -699,32 +710,7 @@
                 verify("scuba1");
             }
 
-            // FD Time Target: 213 (0xD5) - Full Sum. (Based on NACK log logic)
-            function setFdTime() {
-                let s = parseInt(document.getElementById("fdTimeRange").value);
-                sendCalcSum(
-                    "26",
-                    213,
-                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
-                    "04",
-                    "Set FD Time " + s + "s",
-                );
-                setTimeout(async () => {
-                    await sendStatic("#609e0200");
-                }, 600);
-            }
-
-            function setTimeoutSec() {
-                let s = parseInt(document.getElementById("timeoutSel").value);
-                sendCalcSum(
-                    "2a",
-                    214,
-                    s.toString(16).padStart(4, "0"),
-                    "04",
-                    "Set Timeout " + s + "s",
-                );
-                verify("scuba1");
-            }
+            // SCUBA ALARMS: Target 217/216 (Full Sum)
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
                 sendCalcSum(
@@ -746,6 +732,21 @@
                     "Set Time " + m + "min",
                 );
                 verify("scuba2");
+            }
+
+            // FD TIME: Target 218 (Full Sum)
+            function setFdTime() {
+                let s = parseInt(document.getElementById("fdTimeRange").value);
+                sendCalcSum(
+                    "26",
+                    218,
+                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
+                    "04",
+                    "Set FD Time " + s + "s",
+                );
+                setTimeout(async () => {
+                    await sendStatic("#609e0200");
+                }, 600);
             }
 
             function setFdDepth(idx) {
@@ -785,7 +786,6 @@
                 verify("free");
             }
 
-            // HELPERS
             function highlightBtn(grp, id) {
                 document
                     .getElementById(grp)
@@ -815,12 +815,6 @@
                     setTimeout(async () => {
                         await sendStatic(cmd, "Verify");
                     }, 600);
-            }
-            function setMode(m, btn) {
-                highlightBtn("modeGroup", btn.id);
-                let c =
-                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
-                sendStatic(c, "Set Mode");
             }
         </script>
     </body>
