@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v14</title>
+        <title>Cosmiq 5 Manager v15</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -515,7 +515,6 @@
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
 
-                    // Smart Discovery
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
@@ -656,6 +655,7 @@
             }
 
             async function readAllSettings() {
+                // Slower delay (350ms) to ensure no missed packets
                 const qs = [
                     "#58a60200",
                     "#5f9f0200",
@@ -714,22 +714,26 @@
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
             }
 
-            // MAPPINGS
+            // MAPPINGS (FIXED TYPOS HERE)
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c);
             }
+
+            // Fixed: Removed extra 'c' from prefix
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
                 let c = (206 - l).toString(16);
-                sendStatic(`#2ec${c}020${l}`);
+                sendStatic(`#2e${c}020${l}`);
             }
+
+            // Fixed: Removed extra 'd' from prefix
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21d${c}04000${s}`);
+                sendStatic(`#21${c}04000${s}`);
             }
 
             function setTimeoutSec() {
