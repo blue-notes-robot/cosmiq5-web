@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager (Smart Sync)</title>
+        <title>Cosmiq 5 Manager v9 (Fixed Sync)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -356,8 +356,10 @@
                     <h3 style="color: var(--red)">Advanced</h3>
                     <span class="label">High Salinity Mode</span>
                     <div class="warn">
-                        Use only in highly saline water. Normal water readings
-                        will be incorrect.
+                        This is an advanced setting. Please only use this
+                        setting when diving in highly saline water. Your depth
+                        reading will be slightly shallower if used in normal
+                        ocean water.
                     </div>
                     <div class="grid">
                         <button
@@ -522,10 +524,8 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
-            // SMART CONNECTION LOGIC
             async function connect() {
                 try {
-                    log("Scanning...");
                     dev = await navigator.bluetooth.requestDevice({
                         filters: [
                             { namePrefix: "COSMIQ" },
@@ -534,32 +534,22 @@
                         optionalServices: [SERVICE_UUID],
                     });
                     dev.addEventListener("gattserverdisconnected", onDisc);
-                    log("Connecting GATT...");
                     const server = await dev.gatt.connect();
-                    log("Getting Service...");
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
 
-                    log("Searching Characteristics...");
                     const chars = await service.getCharacteristics();
-
-                    // AUTO-DISCOVER TX (Write) AND RX (Notify)
                     for (const c of chars) {
                         if (
                             c.properties.write ||
                             c.properties.writeWithoutResponse
-                        ) {
+                        )
                             txChar = c;
-                            log("Found Write Char: " + c.uuid);
-                        }
-                        if (c.properties.notify) {
-                            rxChar = c;
-                            log("Found Notify Char: " + c.uuid);
-                        }
+                        if (c.properties.notify) rxChar = c;
                     }
 
                     if (!txChar || !rxChar)
-                        throw new Error("Could not map TX/RX chars.");
+                        throw new Error("Missing TX/RX chars.");
 
                     await rxChar.startNotifications();
                     rxChar.addEventListener(
@@ -596,54 +586,96 @@
                 log("Disconnected.");
             }
 
-            // DECODER
+            // --- THE FIXED DECODER (ASCII) ---
             function handleRX(event) {
-                let val = event.target.value;
-                let hex = [];
-                for (let i = 0; i < val.byteLength; i++)
-                    hex.push(("00" + val.getUint8(i).toString(16)).slice(-2));
+                // 1. Decode as TEXT (Since device talks in ASCII strings)
+                let dec = new TextDecoder("utf-8");
+                let text = dec.decode(event.target.value);
+                // Remove newline/garbage
+                text = text.trim();
 
-                if (hex[0] !== "24") return; // Must start with $
-                let cmd = hex[1];
+                log("RX: " + text);
+
+                if (!text.startsWith("$")) return; // Responses start with $ (0x24)
+
+                // Parse String (e.g. "$5F8E0C000007")
+                let cmd = text.substr(1, 2).toLowerCase(); // "5f"
+
+                // Note: Offsets are based on Hex CHARACTERS, not bytes.
+                // Structure: $[CMD][CHECK][LEN][DATA...]
+                // Chars:     0 1-2  3-4    5-6  7...
 
                 if (cmd === "5f") {
                     // Backlight
-                    let bl = parseInt(hex[6], 16);
+                    // Last char is value
+                    let valStr = text.slice(-1);
+                    let bl = parseInt(valStr, 16);
                     highlightBtn("blGroup", "bl" + bl);
                 }
+
                 if (cmd === "5c") {
-                    // Scuba 1
-                    let depth = (parseInt(hex[4] + hex[5], 16) - 1000) / 100;
+                    // Scuba 1 (Depth, Timeout, Air, PPO2)
+                    // Payload starts at index 7.
+                    // Data: Depth(4), Timeout(4), Air(2), PPO2(2)
+
+                    // Depth: Chars 7,8,9,10
+                    let dHex = text.substr(7, 4);
+                    let depth = (parseInt(dHex, 16) - 1000) / 100;
                     document.getElementById("scubaDepth").value = depth;
-                    let time = parseInt(hex[6] + hex[7], 16);
+
+                    // Timeout: Chars 11,12,13,14
+                    let tHex = text.substr(11, 4);
+                    let time = parseInt(tHex, 16);
                     document.getElementById("timeoutSel").value = time;
-                    let air = parseInt(hex[8], 16);
+
+                    // Air: Chars 15,16
+                    let air = parseInt(text.substr(15, 2), 16);
                     document.getElementById("airRange").value = air;
                     upd("airVal", air + "%");
-                    let ppo2 = parseInt(hex[9], 16) / 10;
+
+                    // PPO2: Chars 17,18
+                    let ppo2 = parseInt(text.substr(17, 2), 16) / 10;
                     if (ppo2 < 1.0) ppo2 = 1.4;
                     document.getElementById("ppo2Range").value = ppo2;
                     upd("ppo2Val", ppo2);
                 }
+
                 if (cmd === "5b") {
                     // Scuba 2
-                    let time = parseInt(hex[6] + hex[7], 16);
+                    // Time(4), Safety(2), Mode(2)
+                    let tHex = text.substr(7, 4); // Index 7, length 4? No, Check log.
+                    // Log: 5B C9 0C 001E 01 01
+                    // 5B (Cmd) C9 (Check) 0C (Len 12)
+                    // Payload chars start at index 7.
+
+                    // Time Alarm (4 chars)
+                    let time = parseInt(text.substr(7, 4), 16);
                     document.getElementById("scubaTime").value = time;
-                    let safe = parseInt(hex[8], 16);
+
+                    // Safety (2 chars)
+                    let safe = parseInt(text.substr(11, 2), 16);
                     highlightBtn("safeGroup", "safe" + safe);
-                    let mode = parseInt(hex[9], 16);
+
+                    // Mode (2 chars)
+                    let mode = parseInt(text.substr(13, 2), 16);
                     highlightBtn("modeGroup", "mode" + mode);
                 }
+
                 if (cmd === "5d") {
-                    // Free Depths
+                    // Free Depths (6 alarms * 2 chars)
                     for (let i = 0; i < 6; i++) {
-                        document.getElementById("fd" + (i + 1)).value =
-                            parseInt(hex[4 + i], 16) + 5;
+                        let hex = text.substr(7 + i * 2, 2);
+                        let val = parseInt(hex, 16);
+                        document.getElementById("fd" + (i + 1)).value = val + 5;
                     }
                 }
+
                 if (cmd === "60") {
                     // Free Time
-                    let sec = parseInt(hex[4], 16) * 5 + 30;
+                    // Payload is just 2 chars? Log: 602A08 19 14231E...
+                    // Wait, log says 60 2A 08 (Len 8) 19 (Value 25)
+                    let hex = text.substr(7, 2);
+                    let sec = parseInt(hex, 16) * 5 + 30;
                     document.getElementById("fdTimeRange").value = sec;
                     upd("fdTimeVal", sec + "s");
                 }
@@ -664,7 +696,7 @@
                 }
             }
 
-            // SENDERS (TEXT MODE - FIXED)
+            // SENDERS (TEXT MODE)
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
@@ -682,7 +714,6 @@
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
             }
 
-            // HELPERS
             function highlightBtn(grp, id) {
                 document
                     .getElementById(grp)
