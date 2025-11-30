@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v34 (Map Corrected)</title>
+        <title>Cosmiq 5 Manager v36 (Safety Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -543,8 +543,8 @@
                             margin-bottom: 15px;
                         "
                     >
-                        Use this tool to find missing settings. Packet $5B bytes
-                        4 & 5 are confirmed Units/Date.
+                        Use this tool to find missing settings. <br />
+                        Confirmed: $5B (Units/Date), $5C (Mode).
                     </p>
                     <button
                         class="btn-main"
@@ -552,6 +552,13 @@
                         style="background: #6f42c1; margin-bottom: 15px"
                     >
                         Refetch All
+                    </button>
+                    <button
+                        class="btn-main"
+                        onclick="bruteForceSafety()"
+                        style="background: #dc3545; margin-bottom: 15px"
+                    >
+                        Bruteforce Safety
                     </button>
 
                     <div id="hunterTable">
@@ -728,6 +735,15 @@
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
+
+                    // Byte 5 (16-17): Default Mode
+                    // 00=Scuba, 01=Gauge, 02=Freedive
+                    let mode = parseInt(clean.substr(16, 2), 16);
+                    if (!isNaN(mode)) {
+                        highlightBtn("modeGroup", "mode" + mode);
+                        log("> Parsed Mode: " + mode);
+                    }
+
                     log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
                 }
 
@@ -848,6 +864,36 @@
                 await readAllSettings();
             }
 
+            // --- Bruteforcer for Safety ---
+            async function bruteForceSafety() {
+                log("--- STARTING SAFETY BRUTEFORCE ---", "log-info");
+
+                // Attempt 1: 4 Bytes payload (Fix Theory)
+                // Payload: 00 00 00 02. Length: 04. Algo B (Target 219).
+                // Checksum = 219 - 2 = 217 (D9).
+                // Packet: #21D90400000002
+                log("Attempt 1: 4 Bytes (Algo B)");
+                await sendStatic("#21D90400000002");
+                await new Promise((r) => setTimeout(r, 500));
+
+                // Attempt 2: 4 Bytes payload (Algo A - Target 219)
+                // Checksum = 219 - 4 - 2 = 213 (D5).
+                // Packet: #21D50400000002
+                log("Attempt 2: 4 Bytes (Algo A)");
+                await sendStatic("#21D50400000002");
+                await new Promise((r) => setTimeout(r, 500));
+
+                // Attempt 3: 2 Bytes payload (Maybe 04 is not length?)
+                // Payload: 00 02. Length: 02. Algo B (Target 219)
+                // Checksum = 219 - 2 = 217 (D9).
+                // Packet: #21D9020002
+                log("Attempt 3: 2 Bytes (Algo B)");
+                await sendStatic("#21D9020002");
+
+                log("--- DONE --- verify results.");
+                verify("scuba2");
+            }
+
             async function sendStatic(str, desc = "") {
                 if (!txChar) return;
                 let enc = new TextEncoder();
@@ -883,12 +929,14 @@
             // --- FUNCTION FIXES ---
 
             // Safety Factor: Target 219 (Algo B)
-            // Fix: sendCalcSum uses Algo A (Target - (Len + Sum)).
-            // To mimic Algo B (Target - Sum), we set TargetA = TargetB + Len.
-            // TargetB = 219, Len = 4 => TargetA = 223.
+            // Fix 2: Packet length must match data length!
+            // Length is 04 (4 bytes), but we were sending 3 bytes (00000s).
+            // New Payload: 00 00 00 0s (4 bytes).
+            // TargetA = TargetB (219) + Len (4) = 223.
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
-                let valStr = "00000" + s;
+                // Pad to 4 bytes: 00 00 00 0s
+                let valStr = "0000000" + s;
                 sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
                 verify("scuba2");
             }
@@ -905,6 +953,7 @@
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c, "Set Mode");
+                verify("scuba1"); // Verify via 5C
             }
 
             function setTimeoutIndex() {
