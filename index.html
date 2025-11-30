@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v44 (Complete)</title>
+        <title>Cosmiq 5 Manager v45 (Env Read Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -733,7 +733,16 @@
 
                 // Parsing Logic
                 if (cmd === "5F") {
-                    // System: Backlight & Eco
+                    // System: Backlight, Eco, Environment
+                    // Byte 1 (8-9): Environment Mode (0=Norm, 1=Salt, 2=Alt)
+                    let env = parseInt(clean.substr(8, 2), 16);
+                    if (!isNaN(env) && env <= 2) {
+                        highlightBtn("envGroup", "env" + env);
+                        document.getElementById("salinityWarn").style.display =
+                            env === 1 ? "block" : "none";
+                        log("> Parsed Env: " + env);
+                    }
+
                     // Byte 2 (10-11): Raw Backlight + Eco Flag
                     // Backlight = Lower 4 bits. Eco = Bit 4 (0x10).
                     // Log analysis: 0x05 = BL3, Eco ON. 0x15 = BL3, Eco OFF.
