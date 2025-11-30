@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v22 (Decoded)</title>
+        <title>Cosmiq 5 Manager v23 (Fixed)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -182,7 +182,7 @@
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager v22</h1>
+            <h1>Cosmiq 5 Manager v23</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
@@ -495,6 +495,10 @@
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
+                if (cmd === "5f") {
+                    let bl = parseInt(clean.substr(10, 2), 16);
+                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
+                }
                 if (cmd === "5c") {
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
@@ -523,6 +527,12 @@
                     highlightBtn("safeGroup", "safe" + safe);
                     log(`> Parsed: ScubaTime:${time}min Safety:${safe}`);
                 }
+                if (cmd === "60") {
+                    let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
+                    syncInput("fdTimeRange", sec);
+                    upd("fdTimeVal", sec + "s");
+                    log(`> Parsed: FD Time:${sec}s`);
+                }
             }
 
             async function readAllSettings() {
@@ -544,21 +554,21 @@
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---");
 
-                // 1. Safety Factor
+                log("1. Set Safety -> Progressive");
                 await setSafe(2, document.getElementById("safe2"));
                 await new Promise((r) => setTimeout(r, 800));
 
-                // 2. Air Mix
+                log("2. Set Air -> 32%");
                 document.getElementById("airRange").value = 32;
                 await setAir();
                 await new Promise((r) => setTimeout(r, 800));
 
-                // 3. PPO2
+                log("3. Set PPO2 -> 1.5");
                 document.getElementById("ppo2Range").value = 1.5;
                 await setPPO2();
                 await new Promise((r) => setTimeout(r, 800));
 
-                // 4. Timeout
+                log("4. Set Timeout -> 30s");
                 document.getElementById("timeoutSel").value = 30;
                 await setTimeoutSec();
                 await new Promise((r) => setTimeout(r, 800));
@@ -567,7 +577,7 @@
                 await readAllSettings();
             }
 
-            // SENDERS with Description
+            // SENDERS
             async function sendStatic(str, desc = "") {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
@@ -600,31 +610,6 @@
                 await sendStatic(cmd, desc);
             }
 
-            async function sendCalcVal(
-                prefix,
-                targetSum,
-                valHex,
-                lenHex = "02",
-                desc = "",
-            ) {
-                let v = valHex.toLowerCase();
-                let p = prefix.toLowerCase();
-                let payloadBytes = [];
-                // NO LENGTH IN SUM
-                for (let i = 0; i < v.length; i += 2)
-                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
-
-                let sum = payloadBytes.reduce((a, b) => a + b, 0);
-                let checkDec = (targetSum - sum) & 0xff;
-                let checkHex = checkDec
-                    .toString(16)
-                    .padStart(2, "0")
-                    .toLowerCase();
-
-                let cmd = `#${p}${checkHex}${lenHex}${v}`;
-                await sendStatic(cmd, desc);
-            }
-
             function describe(cmd) {
                 if (cmd.includes("21d")) return "Set Safety";
                 if (cmd.includes("22")) return "Set Air";
@@ -635,7 +620,7 @@
                 return "Command";
             }
 
-            // FUNCTIONS (CORRECTED ALGORITHMS)
+            // FUNCTIONS (FIXED TARGETS & TYPOS)
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
@@ -646,11 +631,13 @@
                 highlightBtn("blGroup", btn.id);
                 let c = (206 - l).toString(16);
                 sendStatic(`#2ec${c}020${l}`, "Set Backlight " + l);
+                verify("sys");
             }
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
                 sendStatic(`#21d${c}04000${s}`, "Set Safety " + s);
+                verify("scuba2");
             }
 
             function setTimeoutSec() {
@@ -662,6 +649,7 @@
                     "04",
                     "Set Timeout " + s + "s",
                 );
+                verify("scuba1");
             }
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
@@ -672,6 +660,7 @@
                     "04",
                     "Set Depth " + m + "m",
                 );
+                verify("scuba1");
             }
             function setScubaTime() {
                 let m = parseInt(document.getElementById("scubaTime").value);
@@ -682,6 +671,7 @@
                     "04",
                     "Set Time " + m + "min",
                 );
+                verify("scuba2");
             }
             function setFdTime() {
                 let s = parseInt(document.getElementById("fdTimeRange").value);
@@ -692,30 +682,35 @@
                     "04",
                     "Set FD Time " + s + "s",
                 );
+                setTimeout(async () => {
+                    await sendStatic("#609e0200");
+                }, 600);
             }
 
-            // FIXED TARGETS (218 for Air, 225 for PPO2)
+            // FIXED TARGETS (222 for Air, 211 for PPO2) - Full Sum Algorithm
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 sendCalcSum(
                     "22",
-                    218,
+                    222,
                     v.toString(16).padStart(2, "0"),
                     "02",
                     "Set Air " + v + "%",
                 );
+                verify("scuba1");
             }
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalcSum(
                     "2d",
-                    225,
+                    211,
                     Math.round(v * 10)
                         .toString(16)
                         .padStart(2, "0"),
                     "02",
                     "Set PPO2 " + v,
                 );
+                verify("scuba1");
             }
 
             function setFdDepth(idx) {
@@ -746,6 +741,7 @@
                     pay = h + "1e";
                 }
                 sendCalcSum(pre, tgt, pay, "04", "Set FD Depth " + m + "m");
+                verify("free");
             }
 
             // HELPERS
@@ -767,6 +763,17 @@
                         1000,
                     );
                 }
+            }
+            function verify(type) {
+                let cmd = "";
+                if (type === "sys") cmd = "#5f9f0200";
+                if (type === "scuba1") cmd = "#5ca20200";
+                if (type === "scuba2") cmd = "#5ba30200";
+                if (type === "free") cmd = "#5da10200";
+                if (cmd)
+                    setTimeout(async () => {
+                        await sendStatic(cmd);
+                    }, 600);
             }
         </script>
     </body>
