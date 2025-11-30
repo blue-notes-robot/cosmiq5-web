@@ -3,11 +3,12 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v15</title>
+        <title>Cosmiq 5 Manager v16 (Verified)</title>
         <style>
             :root {
                 --blue: #007bff;
                 --green: #28a745;
+                --red: #dc3545;
                 --bg: #f8f9fa;
                 --text: #212529;
             }
@@ -109,7 +110,25 @@
                 border-radius: 12px;
                 margin-bottom: 12px;
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+                transition: background 0.3s;
             }
+
+            /* Error Flash Animation */
+            .card.error {
+                animation: flashRed 0.5s ease-in-out;
+            }
+            @keyframes flashRed {
+                0% {
+                    background-color: white;
+                }
+                50% {
+                    background-color: #f8d7da;
+                }
+                100% {
+                    background-color: white;
+                }
+            }
+
             .card h3 {
                 margin: 0 0 15px 0;
                 font-size: 13px;
@@ -197,11 +216,18 @@
                 background: #212529;
                 margin-top: 20px;
                 text-align: left;
-                height: 200px;
+                height: 180px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
                 white-space: pre-wrap;
+            }
+            .log-err {
+                color: #ff6b6b;
+                font-weight: bold;
+            }
+            .log-tx {
+                color: #4dabf7;
             }
         </style>
     </head>
@@ -230,7 +256,7 @@
             </div>
 
             <div id="gen" class="section active">
-                <div class="card">
+                <div class="card" id="card-sys">
                     <h3>System</h3>
                     <span class="label">Default Mode</span>
                     <div class="grid" id="modeGroup">
@@ -286,7 +312,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card" id="card-disp">
                     <h3>Display</h3>
                     <span class="label">Screen Timeout</span>
                     <div class="row">
@@ -357,7 +383,7 @@
             </div>
 
             <div id="scuba" class="section">
-                <div class="card">
+                <div class="card" id="card-safe">
                     <h3>Safety</h3>
                     <span class="label">Safety Factor</span>
                     <div
@@ -403,7 +429,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card" id="card-gas">
                     <h3>Gas</h3>
                     <span class="label">Air Mix (O2 %)</span>
                     <div class="row">
@@ -421,7 +447,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card" id="card-scuba-alarm">
                     <h3>Alarms</h3>
                     <div class="row">
                         <span style="font-size: 13px; flex: 1">Depth (m)</span>
@@ -441,7 +467,7 @@
             </div>
 
             <div id="free" class="section">
-                <div class="card">
+                <div class="card" id="card-free">
                     <h3>Alarms</h3>
                     <span class="label">Max Time (Seconds)</span>
                     <div class="row" style="margin-bottom: 20px">
@@ -492,10 +518,11 @@
                 document.getElementById(id).innerText = val;
             }
 
-            function log(m) {
+            function log(m, type = "") {
                 console.log(m);
                 const el = document.getElementById("log");
-                el.innerText += "\n" + m;
+                let span = `<span class="${type}">${m}</span>`;
+                el.innerHTML += "\n" + span;
                 el.scrollTop = el.scrollHeight;
             }
 
@@ -515,6 +542,7 @@
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
 
+                    // Smart Discovery
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
@@ -547,7 +575,7 @@
                     log("Reading settings...");
                     await readAllSettings();
                 } catch (e) {
-                    log("Error: " + e);
+                    log("Error: " + e, "log-err");
                 }
             }
 
@@ -569,26 +597,33 @@
                 let text = dec.decode(event.target.value);
                 let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                // LOG RAW DATA
+                // NACK DETECTION (0x80 header)
+                if (clean.startsWith("80")) {
+                    log("!!! COMMAND REJECTED !!!", "log-err");
+                    document.querySelectorAll(".card.active").forEach((c) => {
+                        c.classList.add("error");
+                        setTimeout(() => c.classList.remove("error"), 500);
+                    });
+                    return;
+                }
+
                 log("RX: " + text.trim());
 
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
-                // Backlight
                 if (cmd === "5F") {
                     let bl = parseInt(clean.substr(10, 2), 16);
                     if (!isNaN(bl)) {
                         highlightBtn("blGroup", "bl" + bl);
-                        log("> Parsed Backlight: " + bl);
+                        log("> Backlight: " + bl);
                     }
                 }
 
-                // Scuba 1
                 if (cmd === "5C") {
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
-                    log("> Parsed Depth: " + depth + "m");
+                    log("> Depth: " + depth + "m");
 
                     let time = parseInt(clean.substr(10, 4), 16);
                     if (!isNaN(time)) {
@@ -596,14 +631,12 @@
                         document
                             .getElementById("timeoutSel")
                             .parentElement.classList.add("synced");
-                        log("> Parsed Timeout: " + time + "s");
                     }
 
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
-                        log("> Parsed Air: " + air + "%");
                     }
 
                     let ppo2 = parseInt(clean.substr(16, 2), 16) / 10;
@@ -611,51 +644,36 @@
                     if (!isNaN(ppo2)) {
                         document.getElementById("ppo2Range").value = ppo2;
                         upd("ppo2Val", ppo2);
-                        log("> Parsed PPO2: " + ppo2);
                     }
                 }
 
-                // Scuba 2
                 if (cmd === "5B") {
                     let time = parseInt(clean.substr(10, 4), 16);
                     syncInput("scubaTime", time);
-                    log("> Parsed Time Alarm: " + time);
 
                     let safe = parseInt(clean.substr(14, 2), 16);
-                    if (!isNaN(safe)) {
-                        highlightBtn("safeGroup", "safe" + safe);
-                        log("> Parsed Safety: " + safe);
-                    }
+                    if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
 
                     let mode = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(mode)) {
-                        highlightBtn("modeGroup", "mode" + mode);
-                        log("> Parsed Mode: " + mode);
-                    }
+                    if (!isNaN(mode)) highlightBtn("modeGroup", "mode" + mode);
                 }
 
-                // Freedive
                 if (cmd === "5D") {
-                    let logStr = "> Parsed FD Depths: ";
                     for (let i = 0; i < 6; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
-                        logStr += val + 5 + "m ";
                     }
-                    log(logStr);
                 }
                 if (cmd === "60") {
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     if (!isNaN(sec)) {
                         document.getElementById("fdTimeRange").value = sec;
                         upd("fdTimeVal", sec + "s");
-                        log("> Parsed Freedive Time: " + sec + "s");
                     }
                 }
             }
 
             async function readAllSettings() {
-                // Slower delay (350ms) to ensure no missed packets
                 const qs = [
                     "#58a60200",
                     "#5f9f0200",
@@ -670,29 +688,21 @@
                 }
             }
 
-            // HELPERS
-            function syncInput(id, val) {
-                let el = document.getElementById(id);
-                if (!isNaN(val) && el) {
-                    el.value = val;
-                    el.parentElement.classList.add("synced");
-                    setTimeout(
-                        () => el.parentElement.classList.remove("synced"),
-                        1000,
-                    );
-                }
-            }
+            // AUTO-VERIFY (The Logic Loop)
+            // When we write a setting, we wait 500ms then read that section back
+            // to confirm it stuck.
+            async function verify(type) {
+                let cmd = "";
+                if (type === "sys") cmd = "#5f9f0200";
+                if (type === "scuba1") cmd = "#5ca20200";
+                if (type === "scuba2") cmd = "#5ba30200";
+                if (type === "free") cmd = "#5da10200";
 
-            function highlightBtn(grp, id) {
-                document
-                    .getElementById(grp)
-                    .querySelectorAll(".btn-opt")
-                    .forEach((b) => b.classList.remove("selected"));
-                let btn = document.getElementById(id);
-                if (btn) {
-                    btn.classList.add("selected");
-                    btn.classList.add("synced");
-                    setTimeout(() => btn.classList.remove("synced"), 1000);
+                if (cmd) {
+                    setTimeout(async () => {
+                        log("Verifying...", "log-tx");
+                        await sendStatic(cmd);
+                    }, 600); // 600ms wait
                 }
             }
 
@@ -700,7 +710,7 @@
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
-                log("TX: " + str);
+                log("TX: " + str, "log-tx");
             }
 
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
@@ -714,35 +724,62 @@
                 await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
             }
 
-            // MAPPINGS (FIXED TYPOS HERE)
+            // HELPERS & MAPPINGS
+            function syncInput(id, val) {
+                let el = document.getElementById(id);
+                if (!isNaN(val) && el) {
+                    el.value = val;
+                    el.parentElement.classList.add("synced");
+                    setTimeout(
+                        () => el.parentElement.classList.remove("synced"),
+                        1000,
+                    );
+                }
+            }
+            function highlightBtn(grp, id) {
+                document
+                    .getElementById(grp)
+                    .querySelectorAll(".btn-opt")
+                    .forEach((b) => b.classList.remove("selected"));
+                let btn = document.getElementById(id);
+                if (btn) {
+                    btn.classList.add("selected");
+                    btn.classList.add("synced");
+                    setTimeout(() => btn.classList.remove("synced"), 1000);
+                }
+            }
+
+            // Functions with Verify Trigger
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c);
+                verify("scuba2");
             }
-
-            // Fixed: Removed extra 'c' from prefix
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
                 let c = (206 - l).toString(16);
-                sendStatic(`#2e${c}020${l}`);
+                sendStatic(`#2ec${c}020${l}`);
+                verify("sys");
             }
-
-            // Fixed: Removed extra 'd' from prefix
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21${c}04000${s}`);
+                // Fixed typo: was #21dd...
+                sendStatic(`#21d${c}04000${s}`);
+                verify("scuba2");
             }
 
             function setTimeoutSec() {
                 let s = parseInt(document.getElementById("timeoutSel").value);
                 sendCalc("2a", 210, s.toString(16).padStart(4, "0"), "04");
+                verify("scuba1");
             }
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 sendCalc("22", 222, v.toString(16).padStart(2, "0"));
+                verify("scuba1");
             }
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
@@ -753,6 +790,7 @@
                         .toString(16)
                         .padStart(2, "0"),
                 );
+                verify("scuba1");
             }
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
@@ -762,10 +800,12 @@
                     (m * 100 + 1000).toString(16).padStart(4, "0"),
                     "04",
                 );
+                verify("scuba1");
             }
             function setScubaTime() {
                 let m = parseInt(document.getElementById("scubaTime").value);
                 sendCalc("28", 216, m.toString(16).padStart(4, "0"), "04");
+                verify("scuba2");
             }
             function setFdTime() {
                 let s = parseInt(document.getElementById("fdTimeRange").value);
@@ -775,6 +815,10 @@
                     "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
                     "04",
                 );
+                // verify('free'); // Note: Freedive Time read is #60, added below
+                setTimeout(async () => {
+                    await sendStatic("#609e0200");
+                }, 600);
             }
             function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
@@ -804,6 +848,7 @@
                     pay = h + "1e";
                 }
                 sendCalc(pre, tgt, pay, "04");
+                verify("free");
             }
         </script>
     </body>
