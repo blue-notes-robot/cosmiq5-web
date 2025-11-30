@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v46 (Verifications Fixed)</title>
+        <title>Cosmiq 5 Manager v48 (Final)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -64,9 +64,6 @@
             }
             .btn-main:active {
                 transform: scale(0.98);
-            }
-            .btn-test {
-                background: #6f42c1;
             }
             .btn-disc {
                 background: #6c757d;
@@ -294,14 +291,6 @@
             Connect & Sync
         </button>
         <button
-            id="testBtn"
-            class="btn-main btn-test"
-            onclick="runSystemTest()"
-            style="display: none"
-        >
-            RUN SYSTEM TEST
-        </button>
-        <button
             id="disconnectBtn"
             class="btn-main btn-disc"
             onclick="disconnect()"
@@ -315,7 +304,7 @@
                 <button class="tab" onclick="tab('env')">Environment</button>
                 <button class="tab" onclick="tab('scuba')">Scuba</button>
                 <button class="tab" onclick="tab('free')">Freedive</button>
-                <button class="tab" onclick="tab('hunter')">Byte Hunter</button>
+                <button class="tab" onclick="tab('hunter')">Diagnostics</button>
             </div>
 
             <div id="gen" class="section active">
@@ -391,14 +380,28 @@
                                 border: 1px solid #ced4da;
                             "
                         >
-                            <option value="0">15 Seconds</option>
-                            <option value="1">30 Seconds</option>
-                            <option value="2">60 Seconds</option>
-                            <option value="3">120 Seconds</option>
+                            <option value="0">5 s</option>
+                            <option value="1">10 s</option>
+                            <option value="2">15 s</option>
+                            <option value="3">20 s</option>
+                            <option value="4">30 s</option>
+                            <option value="5">1 min</option>
+                            <option value="6">2 min</option>
                         </select>
                         <button class="btn-set" onclick="setTimeoutIndex()">
                             Set
                         </button>
+                    </div>
+                    <div
+                        style="
+                            font-size: 11px;
+                            color: #666;
+                            margin-top: -10px;
+                            margin-bottom: 15px;
+                            font-style: italic;
+                        "
+                    >
+                        Period of inactivity before returning to Watch Mode
                     </div>
 
                     <span class="label">Backlight</span>
@@ -583,9 +586,7 @@
                             margin-bottom: 15px;
                         "
                     >
-                        Use this tool to find missing settings. <br />
-                        Confirmed: $5B (Time/Timeout/Date/Units), $5C (Mode),
-                        $5D (Safe/PPO2), $60 (FD6).
+                        Raw memory viewer. Useful for diagnostics.
                     </p>
                     <button
                         class="btn-main"
@@ -615,7 +616,7 @@
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
-            let memMap = {}; // Stores latest packets for Hunter
+            let memMap = {};
 
             // Global State for Bitmasked settings
             let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
@@ -688,7 +689,6 @@
                         "none";
                     document.getElementById("disconnectBtn").style.display =
                         "block";
-                    document.getElementById("testBtn").style.display = "block";
                     document.getElementById("app").style.display = "block";
 
                     log("Reading settings...");
@@ -706,7 +706,6 @@
                 document.getElementById("status").classList.remove("connected");
                 document.getElementById("connectBtn").style.display = "block";
                 document.getElementById("disconnectBtn").style.display = "none";
-                document.getElementById("testBtn").style.display = "none";
                 document.getElementById("app").style.display = "none";
                 log("Disconnected.");
             }
@@ -727,14 +726,12 @@
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
-                // Store for Byte Hunter
                 memMap[cmd] = clean;
                 updateHunter();
 
                 // Parsing Logic
                 if (cmd === "5F") {
                     // System: Backlight, Eco, Environment
-                    // Byte 1 (8-9): Environment Mode (0=Norm, 1=Salt, 2=Alt)
                     let env = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(env) && env <= 2) {
                         highlightBtn("envGroup", "env" + env);
@@ -743,20 +740,16 @@
                         log("> Parsed Env: " + env);
                     }
 
-                    // Byte 2 (10-11): Raw Backlight + Eco Flag
-                    // Backlight = Lower 4 bits. Eco = Bit 4 (0x10).
-                    // Log analysis: 0x05 = BL3, Eco ON. 0x15 = BL3, Eco OFF.
                     let raw = parseInt(clean.substr(10, 2), 16);
                     if (!isNaN(raw)) {
-                        let bl = raw & 0x0f; // Lower nibble
-                        let ecoDisabled = (raw & 0x10) > 0; // Bit 4 High = Eco Off
+                        let bl = raw & 0x0f;
+                        let ecoDisabled = (raw & 0x10) > 0;
 
                         sysState.bl = bl;
                         sysState.eco = !ecoDisabled;
 
                         highlightBtn("blGroup", "bl" + bl);
 
-                        // Update Eco UI
                         document
                             .getElementById("ecoOn")
                             .classList.remove("selected");
@@ -789,7 +782,6 @@
                         upd("airVal", air + "%");
                     }
 
-                    // Byte 5 (16-17): Default Mode
                     let mode = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(mode)) {
                         highlightBtn("modeGroup", "mode" + mode);
@@ -801,14 +793,12 @@
 
                 if (cmd === "5B") {
                     // Scuba 2
-                    // Byte 1 (8-9): Time Alarm
                     let timeAlarm = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(timeAlarm)) {
                         syncInput("scubaTime", timeAlarm);
                         log("> Parsed Scuba Time Alarm: " + timeAlarm);
                     }
 
-                    // Byte 3 (12-13): Screen Timeout
                     let timeOut = parseInt(clean.substr(12, 2), 16);
                     if (timeOut < 10) {
                         document.getElementById("timeoutSel").value = timeOut;
@@ -825,14 +815,12 @@
                         log("> Parsed Timeout Index: " + timeOut);
                     }
 
-                    // Byte 4 (14-15): Date Mode
                     let dMode = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(dMode)) {
                         highlightBtn("dateGroup", "date" + dMode);
                         log("> Parsed Date Mode: " + dMode);
                     }
 
-                    // Byte 5 (16-17): Units
                     let uMode = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(uMode)) {
                         highlightBtn("unitGroup", "unit" + uMode);
@@ -842,20 +830,17 @@
 
                 if (cmd === "5D") {
                     // Freedive 1-4, Safety, PPO2
-                    // Bytes 0-3: Alarms 1-4
                     for (let i = 0; i < 4; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
                     }
 
-                    // Byte 4 (14-15): Safety Factor (0=Consv, 1=Norm, 2=Prog)
                     let safe = parseInt(clean.substr(14, 2), 16);
                     if (safe >= 0 && safe <= 2) {
                         highlightBtn("safeGroup", "safe" + safe);
                         log("> Parsed Safety: " + safe);
                     }
 
-                    // Byte 5 (16-17): PPO2
                     let ppo2Raw = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(ppo2Raw)) {
                         let ppo2 = ppo2Raw / 10;
@@ -866,18 +851,15 @@
                 }
                 if (cmd === "60") {
                     // Freedive Time & Alarms 5-6
-                    // Byte 0 (6-7): Time Factor
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     syncInput("fdTimeRange", sec);
                     upd("fdTimeVal", sec + "s");
 
-                    // Byte 1 (8-9): Alarm 5 (Assumed)
                     let fda5 = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(fda5)) {
                         syncInput("fd5", fda5 + 5);
                     }
 
-                    // Byte 2 (10-11): Alarm 6
                     let fda6 = parseInt(clean.substr(10, 2), 16);
                     if (!isNaN(fda6)) {
                         syncInput("fd6", fda6 + 5);
@@ -901,7 +883,6 @@
                     let raw = memMap[c.id] || "No Data";
                     let payloadHtml = "";
                     if (raw !== "No Data") {
-                        // Skip CMD(2), CHK(2), LEN(2) -> Start at 6
                         let payload = raw.substring(6);
                         for (let i = 0; i < payload.length; i += 2) {
                             payloadHtml += `<div class="byte-cell"><span class="byte-idx">${i / 2}</span>${payload.substr(i, 2)}</div>`;
@@ -926,21 +907,6 @@
                     await sendStatic(q, "Read Config");
                     await new Promise((r) => setTimeout(r, 300));
                 }
-            }
-
-            async function runSystemTest() {
-                log("--- STARTING SYSTEM TEST ---", "log-info");
-                log("1. Set Safety -> Progressive");
-                await setSafe(2, document.getElementById("safe2")); // Fixed index
-                await new Promise((r) => setTimeout(r, 800));
-
-                log("2. Set Air -> 32%");
-                document.getElementById("airRange").value = 32;
-                await setAir();
-                await new Promise((r) => setTimeout(r, 800));
-
-                log("--- VERIFYING ---", "log-info");
-                await readAllSettings();
             }
 
             async function sendStatic(str, desc = "") {
@@ -977,27 +943,21 @@
 
             // --- FUNCTIONS ---
 
-            // Environment: 0=Norm, 1=Salt, 2=Alt. CMD 30, Target 208.
             function setEnv(v) {
-                // UI Toggle
                 document
                     .getElementById("envGroup")
                     .querySelectorAll(".btn-opt")
                     .forEach((b) => b.classList.remove("selected"));
                 document.getElementById("env" + v).classList.add("selected");
 
-                // Show/Hide Warning
                 document.getElementById("salinityWarn").style.display =
                     v === 1 ? "block" : "none";
 
                 let h = "0" + v;
                 sendCalcSum("30", 208, "000" + v, "04", "Set Environment " + v);
-                verify("sys"); // Verified in 5F
+                verify("sys");
             }
 
-            // Backlight & Eco: Share CMD 2E, Target 210.
-            // Raw Value = Lower 4 bits (BL) | Bit 4 (Eco Off flag)
-            // Eco ON = Bit 4 Low (0). Eco OFF = Bit 4 High (1).
             function setBL(l) {
                 highlightBtn("blGroup", "bl" + l);
                 sysState.bl = l;
@@ -1006,7 +966,6 @@
 
             function setEco(isOn) {
                 sysState.eco = isOn;
-                // UI Toggle
                 document.getElementById("ecoOn").classList.remove("selected");
                 document.getElementById("ecoOff").classList.remove("selected");
                 if (isOn)
@@ -1019,21 +978,18 @@
 
             function sendBLEcoPacket() {
                 let blBits = sysState.bl;
-                let ecoFlag = sysState.eco ? 0x00 : 0x10; // 0=On, 10=Off
+                let ecoFlag = sysState.eco ? 0x00 : 0x10;
                 let total = blBits | ecoFlag;
                 let hex = total.toString(16).padStart(2, "0");
                 sendCalcSum("2e", 210, hex, "02", "Set Sys/BL " + hex);
                 verify("sys");
             }
 
-            // Safety Factor: Target 223 (Algo A)
-            // Log verified: Consv=0, Norm=1, Prog=2
-            // Packet: #21[Chk]04000[Val]
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let valStr = "000" + s;
                 sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
-                verify("free"); // Safety is in $5D (Free)
+                verify("free");
             }
 
             function setMode(m, btn) {
@@ -1079,12 +1035,12 @@
 
             function setUnits(m) {
                 sendCalcSum("23", 221, "0" + m, "02", "Set Units " + m);
-                verify("scuba2"); // Verified in 5B
+                verify("scuba2");
             }
 
             function setDate(m) {
                 sendCalcSum("24", 220, "0" + m, "02", "Set DateFmt " + m);
-                verify("scuba2"); // Verified in 5B
+                verify("scuba2");
             }
 
             function setScubaDepth() {
@@ -1140,27 +1096,7 @@
                     pre = "31";
                     tgt = 207;
                     pay = "14" + h;
-                } // Fixed pay logic for idx 4? No wait, v45 logic was h+14. Let's trust v45 logic.
-                // Re-reading logic in v45 for idx 4: `if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }`
-                // Wait, previous logic was: `if (idx === 4) { pre = "31"; tgt = 207; pay = "14" + h; }` ?
-                // Let's check v45 code.
-                // v45: `if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }`
-                // Wait, the logic for `setFdDepth` in v45 provided in selection was:
-                /*
-                if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }
-                if (idx === 5) { pre = "32"; tgt = 206; pay = "32" + h; }
-                */
-                // I will keep the logic exactly as in v45, just adding verify if needed.
-                // Wait, `idx=4` logic might be `pay = "14" + h`?
-                // Let's check the Readme or logs if available.
-                // Readme says: "Alarm 4: [Meters - 5] + 14 -> Target 207". So `h + "14"`.
-                // Okay, logic in v45 seems correct according to Readme.
-
-                if (idx === 4) {
-                    pre = "31";
-                    tgt = 207;
-                    pay = h + "14";
-                } // Correct based on v45
+                }
                 if (idx === 5) {
                     pre = "32";
                     tgt = 206;
