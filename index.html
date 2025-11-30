@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager (Verbose)</title>
+        <title>Cosmiq 5 Manager v14</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -146,7 +146,6 @@
                 border: 1px solid #90caf9;
             }
 
-            /* Sync Flash Animation */
             .synced {
                 animation: flashGreen 1.5s ease-out;
             }
@@ -191,7 +190,6 @@
                 font-size: 13px;
             }
 
-            /* LOGGING RESTORED */
             #log {
                 font-family: monospace;
                 font-size: 11px;
@@ -199,7 +197,7 @@
                 background: #212529;
                 margin-top: 20px;
                 text-align: left;
-                height: 150px;
+                height: 200px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
@@ -599,12 +597,14 @@
                         document
                             .getElementById("timeoutSel")
                             .parentElement.classList.add("synced");
+                        log("> Parsed Timeout: " + time + "s");
                     }
 
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
+                        log("> Parsed Air: " + air + "%");
                     }
 
                     let ppo2 = parseInt(clean.substr(16, 2), 16) / 10;
@@ -612,6 +612,7 @@
                     if (!isNaN(ppo2)) {
                         document.getElementById("ppo2Range").value = ppo2;
                         upd("ppo2Val", ppo2);
+                        log("> Parsed PPO2: " + ppo2);
                     }
                 }
 
@@ -622,20 +623,27 @@
                     log("> Parsed Time Alarm: " + time);
 
                     let safe = parseInt(clean.substr(14, 2), 16);
-                    highlightBtn("safeGroup", "safe" + safe);
+                    if (!isNaN(safe)) {
+                        highlightBtn("safeGroup", "safe" + safe);
+                        log("> Parsed Safety: " + safe);
+                    }
 
                     let mode = parseInt(clean.substr(16, 2), 16);
-                    highlightBtn("modeGroup", "mode" + mode);
-                    log("> Parsed Mode: " + mode);
+                    if (!isNaN(mode)) {
+                        highlightBtn("modeGroup", "mode" + mode);
+                        log("> Parsed Mode: " + mode);
+                    }
                 }
 
                 // Freedive
                 if (cmd === "5D") {
+                    let logStr = "> Parsed FD Depths: ";
                     for (let i = 0; i < 6; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
+                        logStr += val + 5 + "m ";
                     }
-                    log("> Parsed Freedive Depths");
+                    log(logStr);
                 }
                 if (cmd === "60") {
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
@@ -648,7 +656,6 @@
             }
 
             async function readAllSettings() {
-                // Slower delay (350ms) to ensure no missed packets
                 const qs = [
                     "#58a60200",
                     "#5f9f0200",
