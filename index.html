@@ -3,16 +3,17 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v17 (Stable)</title>
+        <title>Cosmiq 5 Manager v18 (Test Harness)</title>
         <style>
             :root {
                 --blue: #007bff;
                 --green: #28a745;
+                --red: #dc3545;
                 --bg: #f8f9fa;
                 --text: #212529;
             }
             body {
-                font-family: -apple-system, sans-serif;
+                font-family: monospace;
                 background: var(--bg);
                 color: var(--text);
                 padding: 15px;
@@ -23,6 +24,7 @@
             header {
                 text-align: center;
                 margin-bottom: 20px;
+                font-family: sans-serif;
             }
             h1 {
                 font-size: 20px;
@@ -44,7 +46,7 @@
                 border: none;
                 outline: none;
                 font-weight: 600;
-                font-family: inherit;
+                font-family: sans-serif;
             }
             .btn-main {
                 width: 100%;
@@ -54,15 +56,14 @@
                 color: white;
                 background: var(--blue);
                 box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-                transition: 0.1s;
+                margin-bottom: 10px;
             }
-            .btn-main:active {
-                transform: scale(0.98);
+            .btn-test {
+                background: #6f42c1;
             }
             .btn-disc {
                 background: #6c757d;
                 display: none;
-                margin-top: 10px;
             }
 
             .tabs {
@@ -71,7 +72,6 @@
                 padding: 5px;
                 border-radius: 10px;
                 margin-bottom: 15px;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             }
             .tab {
                 flex: 1;
@@ -80,7 +80,6 @@
                 color: #6c757d;
                 border-radius: 8px;
                 font-size: 14px;
-                transition: 0.2s;
             }
             .tab.active {
                 background: var(--blue);
@@ -89,18 +88,9 @@
 
             .section {
                 display: none;
-                animation: fadeIn 0.3s;
             }
             .section.active {
                 display: block;
-            }
-            @keyframes fadeIn {
-                from {
-                    opacity: 0;
-                }
-                to {
-                    opacity: 1;
-                }
             }
 
             .card {
@@ -108,70 +98,43 @@
                 padding: 15px;
                 border-radius: 12px;
                 margin-bottom: 12px;
-                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-                transition: background 0.3s;
+                border: 1px solid #dee2e6;
             }
             .card.error {
-                animation: flashRed 0.5s ease-in-out;
-            }
-            @keyframes flashRed {
-                0% {
-                    background-color: white;
-                }
-                50% {
-                    background-color: #f8d7da;
-                }
-                100% {
-                    background-color: white;
-                }
-            }
-
-            .card h3 {
-                margin: 0 0 15px 0;
-                font-size: 13px;
-                text-transform: uppercase;
-                color: #868e96;
-                border-bottom: 1px solid #eee;
-                padding-bottom: 8px;
+                border-color: var(--red);
+                background: #fff5f5;
             }
 
             .label {
-                font-size: 13px;
-                font-weight: 600;
-                margin-bottom: 8px;
+                font-size: 12px;
+                font-weight: bold;
+                margin-bottom: 5px;
                 display: block;
-                color: #495057;
+                color: #666;
+                font-family: sans-serif;
             }
             .grid {
                 display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
-                gap: 8px;
+                grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+                gap: 5px;
             }
 
             .btn-opt {
-                padding: 10px;
-                background: #f1f3f5;
-                border-radius: 6px;
+                padding: 8px;
+                background: #e9ecef;
+                border-radius: 4px;
                 color: #495057;
-                font-size: 13px;
-                transition: 0.2s;
+                font-size: 12px;
             }
             .btn-opt.selected {
-                background: #e3f2fd;
-                color: var(--blue);
-                border: 1px solid #90caf9;
+                background: #cce5ff;
+                color: #004085;
+                border: 1px solid #b8daff;
             }
 
             .synced {
-                animation: flashGreen 1.5s ease-out;
-            }
-            @keyframes flashGreen {
-                0% {
-                    background-color: #d4edda;
-                }
-                100% {
-                    background-color: transparent;
-                }
+                transition: 0.5s;
+                background-color: #d4edda;
             }
 
             .row {
@@ -184,58 +147,51 @@
                 flex: 1;
             }
             input[type="number"] {
-                width: 60px;
-                padding: 8px;
+                width: 50px;
+                padding: 5px;
                 text-align: center;
                 border: 1px solid #ced4da;
-                border-radius: 6px;
-                font-weight: bold;
-                color: var(--blue);
-            }
-            .val {
-                font-family: monospace;
-                font-weight: bold;
-                width: 45px;
-                text-align: right;
+                border-radius: 4px;
             }
             .btn-set {
-                padding: 8px 16px;
+                padding: 6px 12px;
                 background: var(--blue);
                 color: white;
-                border-radius: 6px;
-                font-size: 13px;
+                border-radius: 4px;
+                font-size: 12px;
             }
 
             #log {
-                font-family: monospace;
-                font-size: 11px;
-                color: #2ecc71;
-                background: #212529;
+                font-size: 10px;
+                color: #00ff00;
+                background: #000;
                 margin-top: 20px;
                 text-align: left;
-                height: 180px;
+                height: 200px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
                 white-space: pre-wrap;
-            }
-            .log-err {
-                color: #ff6b6b;
-                font-weight: bold;
-            }
-            .log-tx {
-                color: #4dabf7;
+                line-height: 1.4;
             }
         </style>
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager</h1>
+            <h1>Cosmiq 5 Manager v18</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
         <button id="connectBtn" class="btn-main" onclick="connect()">
             Connect & Sync
+        </button>
+        <button
+            id="testBtn"
+            class="btn-main btn-test"
+            onclick="runSystemTest()"
+            style="display: none"
+        >
+            RUN SYSTEM TEST
         </button>
         <button
             id="disconnectBtn"
@@ -253,8 +209,7 @@
             </div>
 
             <div id="gen" class="section active">
-                <div class="card" id="card-sys">
-                    <h3>System</h3>
+                <div class="card">
                     <span class="label">Default Mode</span>
                     <div class="grid" id="modeGroup">
                         <button
@@ -279,60 +234,13 @@
                             Gauge
                         </button>
                     </div>
-                    <div style="margin-top: 15px"></div>
-                    <span class="label">Units & Date</span>
-                    <div class="grid">
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#23da0201')"
-                        >
-                            Metric
-                        </button>
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#23db0200')"
-                        >
-                            Imperial
-                        </button>
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#24da0200')"
-                        >
-                            Now
-                        </button>
-                        <button
-                            class="btn-opt"
-                            onclick="sendStatic('#24d90201')"
-                        >
-                            Last Dive
-                        </button>
-                    </div>
-                </div>
-
-                <div class="card" id="card-disp">
-                    <h3>Display</h3>
+                    <div style="height: 10px"></div>
                     <span class="label">Screen Timeout</span>
                     <div class="row">
-                        <select
-                            id="timeoutSel"
-                            style="
-                                flex: 1;
-                                padding: 8px;
-                                border-radius: 6px;
-                                background: #fff;
-                                border: 1px solid #ced4da;
-                            "
-                        >
-                            <option value="0" disabled selected>
-                                -- Syncing --
-                            </option>
-                            <option value="5">5 Seconds</option>
-                            <option value="10">10 Seconds</option>
-                            <option value="15">15 Seconds</option>
-                            <option value="20">20 Seconds</option>
-                            <option value="30">30 Seconds</option>
-                            <option value="60">1 Minute</option>
-                            <option value="120">2 Minutes</option>
+                        <select id="timeoutSel" style="flex: 1">
+                            <option value="20">20s</option>
+                            <option value="30">30s</option>
+                            <option value="60">60s</option>
                         </select>
                         <button class="btn-set" onclick="setTimeoutSec()">
                             Set
@@ -380,14 +288,9 @@
             </div>
 
             <div id="scuba" class="section">
-                <div class="card" id="card-safe">
-                    <h3>Safety</h3>
+                <div class="card">
                     <span class="label">Safety Factor</span>
-                    <div
-                        class="grid"
-                        id="safeGroup"
-                        style="margin-bottom: 15px"
-                    >
+                    <div class="grid" id="safeGroup">
                         <button
                             class="btn-opt"
                             id="safe0"
@@ -410,6 +313,7 @@
                             Prog
                         </button>
                     </div>
+                    <div style="height: 10px"></div>
                     <span class="label">Max PPO2</span>
                     <div class="row">
                         <input
@@ -418,16 +322,11 @@
                             min="1.2"
                             max="1.6"
                             step="0.1"
-                            value="1.2"
                             oninput="upd('ppo2Val', this.value)"
                         />
-                        <span class="val" id="ppo2Val">--</span>
+                        <span id="ppo2Val">--</span>
                         <button class="btn-set" onclick="setPPO2()">Set</button>
                     </div>
-                </div>
-
-                <div class="card" id="card-gas">
-                    <h3>Gas</h3>
                     <span class="label">Air Mix (O2 %)</span>
                     <div class="row">
                         <input
@@ -436,27 +335,29 @@
                             min="21"
                             max="40"
                             step="1"
-                            value="21"
                             oninput="upd('airVal', this.value + '%')"
                         />
-                        <span class="val" id="airVal">--</span>
+                        <span id="airVal">--</span>
                         <button class="btn-set" onclick="setAir()">Set</button>
                     </div>
                 </div>
-
-                <div class="card" id="card-scuba-alarm">
-                    <h3>Alarms</h3>
+                <div class="card">
+                    <span class="label">Alarms</span>
                     <div class="row">
-                        <span style="font-size: 13px; flex: 1">Depth (m)</span>
-                        <input type="number" id="scubaDepth" placeholder="--" />
-                        <button class="btn-set" onclick="setScubaDepth()">
+                        <span>Depth(m)</span
+                        ><input type="number" id="scubaDepth" /><button
+                            class="btn-set"
+                            onclick="setScubaDepth()"
+                        >
                             Set
                         </button>
                     </div>
                     <div class="row">
-                        <span style="font-size: 13px; flex: 1">Time (min)</span>
-                        <input type="number" id="scubaTime" placeholder="--" />
-                        <button class="btn-set" onclick="setScubaTime()">
+                        <span>Time(min)</span
+                        ><input type="number" id="scubaTime" /><button
+                            class="btn-set"
+                            onclick="setScubaTime()"
+                        >
                             Set
                         </button>
                     </div>
@@ -464,40 +365,32 @@
             </div>
 
             <div id="free" class="section">
-                <div class="card" id="card-free">
-                    <h3>Alarms</h3>
-                    <span class="label">Max Time (Seconds)</span>
-                    <div class="row" style="margin-bottom: 20px">
-                        <input
-                            type="range"
-                            id="fdTimeRange"
-                            min="30"
-                            max="600"
-                            step="5"
-                            value="60"
-                            oninput="upd('fdTimeVal', this.value + 's')"
-                        />
-                        <span class="val" id="fdTimeVal">--</span>
-                        <button class="btn-set" onclick="setFdTime()">
+                <div class="card">
+                    <span class="label">Alarms</span>
+                    <div class="row">
+                        <span>Max Time(s)</span
+                        ><input type="number" id="fdTimeRange" /><button
+                            class="btn-set"
+                            onclick="setFdTime()"
+                        >
                             Set
                         </button>
                     </div>
-
-                    <span class="label">Depth Alarms (m)</span>
                     <div id="fdAlarms"></div>
                 </div>
             </div>
         </div>
 
-        <div id="log">Waiting for connection...</div>
+        <div id="log">Waiting...</div>
 
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
 
+            // UI Setup
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
-                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
             function tab(id) {
@@ -513,12 +406,10 @@
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
             }
-
-            function log(m, type = "") {
+            function log(m) {
                 console.log(m);
                 const el = document.getElementById("log");
-                let span = `<span class="${type}">${m}</span>`;
-                el.innerHTML += "\n" + span;
+                el.innerHTML += m + "\n";
                 el.scrollTop = el.scrollHeight;
             }
 
@@ -564,12 +455,13 @@
                         "none";
                     document.getElementById("disconnectBtn").style.display =
                         "block";
+                    document.getElementById("testBtn").style.display = "block";
                     document.getElementById("app").style.display = "block";
 
-                    log("Reading settings...");
+                    log("Syncing...");
                     await readAllSettings();
                 } catch (e) {
-                    log("Error: " + e, "log-err");
+                    log("Error: " + e);
                 }
             }
 
@@ -581,6 +473,7 @@
                 document.getElementById("status").classList.remove("connected");
                 document.getElementById("connectBtn").style.display = "block";
                 document.getElementById("disconnectBtn").style.display = "none";
+                document.getElementById("testBtn").style.display = "none";
                 document.getElementById("app").style.display = "none";
                 log("Disconnected.");
             }
@@ -588,43 +481,31 @@
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
                 let text = dec.decode(event.target.value);
-                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toLowerCase(); // FORCE LOWER
 
-                // NACK Check
                 if (clean.startsWith("80")) {
-                    log("!!! COMMAND REJECTED !!!", "log-err");
-                    document.querySelectorAll(".card.active").forEach((c) => {
-                        c.classList.add("error");
-                        setTimeout(() => c.classList.remove("error"), 500);
-                    });
+                    log(
+                        "<span style='color:red'>NACK (Command Rejected)</span>",
+                    );
                     return;
                 }
 
-                log("RX: " + text.trim());
+                log("<span style='color:#0f0'>RX: " + text.trim() + "</span>");
 
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
-                if (cmd === "5F") {
+                if (cmd === "5f") {
                     let bl = parseInt(clean.substr(10, 2), 16);
-                    if (!isNaN(bl)) {
-                        highlightBtn("blGroup", "bl" + bl);
-                        log("> Backlight: " + bl);
-                    }
+                    if (!isNaN(bl)) highlightBtn("blGroup", "bl" + bl);
                 }
-
-                if (cmd === "5C") {
+                if (cmd === "5c") {
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
-                    log("> Depth: " + depth + "m");
 
                     let time = parseInt(clean.substr(10, 4), 16);
-                    if (!isNaN(time)) {
+                    if (!isNaN(time))
                         document.getElementById("timeoutSel").value = time;
-                        document
-                            .getElementById("timeoutSel")
-                            .parentElement.classList.add("synced");
-                    }
 
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
@@ -638,32 +519,22 @@
                         document.getElementById("ppo2Range").value = ppo2;
                         upd("ppo2Val", ppo2);
                     }
+                    log(
+                        `> Parsed: D:${depth}m T:${time}s Air:${air}% PPO2:${ppo2}`,
+                    );
                 }
-
-                if (cmd === "5B") {
+                if (cmd === "5b") {
                     let time = parseInt(clean.substr(10, 4), 16);
                     syncInput("scubaTime", time);
-
                     let safe = parseInt(clean.substr(14, 2), 16);
-                    if (!isNaN(safe)) highlightBtn("safeGroup", "safe" + safe);
-
-                    // DISABLED MODE SYNC to avoid "False Gauge" issue
-                    // let mode = parseInt(clean.substr(16, 2), 16);
-                    // if(!isNaN(mode)) highlightBtn('modeGroup', 'mode'+mode);
-                }
-
-                if (cmd === "5D") {
-                    for (let i = 0; i < 6; i++) {
-                        let val = parseInt(clean.substr(6 + i * 2, 2), 16);
-                        syncInput("fd" + (i + 1), val + 5);
-                    }
+                    highlightBtn("safeGroup", "safe" + safe);
+                    log(`> Parsed: ScubaTime:${time}min Safety:${safe}`);
                 }
                 if (cmd === "60") {
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
-                    if (!isNaN(sec)) {
-                        document.getElementById("fdTimeRange").value = sec;
-                        upd("fdTimeVal", sec + "s");
-                    }
+                    syncInput("fdTimeRange", sec);
+                    upd("fdTimeVal", sec + "s");
+                    log(`> Parsed: FD Time:${sec}s`);
                 }
             }
 
@@ -678,72 +549,73 @@
                 ];
                 for (const q of qs) {
                     await sendStatic(q);
-                    await new Promise((r) => setTimeout(r, 350));
+                    await new Promise((r) => setTimeout(r, 400));
                 }
             }
 
-            async function verify(type) {
-                let cmd = "";
-                if (type === "sys") cmd = "#5f9f0200";
-                if (type === "scuba1") cmd = "#5ca20200";
-                if (type === "scuba2") cmd = "#5ba30200";
-                if (type === "free") cmd = "#5da10200";
+            // --- TEST HARNESS ---
+            async function runSystemTest() {
+                log("--- STARTING SYSTEM TEST ---");
 
-                if (cmd) {
-                    setTimeout(async () => {
-                        log("Verifying...", "log-tx");
-                        await sendStatic(cmd);
-                    }, 600);
-                }
+                // 1. Set Safety to Progressive (2)
+                log("Test: Set Safety -> Progressive");
+                await setSafe(2, document.getElementById("safe2"));
+                await new Promise((r) => setTimeout(r, 500));
+
+                // 2. Set Air to 32%
+                log("Test: Set Air -> 32%");
+                document.getElementById("airRange").value = 32;
+                await setAir();
+                await new Promise((r) => setTimeout(r, 500));
+
+                // 3. Set PPO2 to 1.5
+                log("Test: Set PPO2 -> 1.5");
+                document.getElementById("ppo2Range").value = 1.5;
+                await setPPO2();
+                await new Promise((r) => setTimeout(r, 500));
+
+                // 4. Set Scuba Depth to 35m
+                log("Test: Set Depth -> 35m");
+                document.getElementById("scubaDepth").value = 35;
+                await setScubaDepth();
+                await new Promise((r) => setTimeout(r, 500));
+
+                log("--- VERIFYING ---");
+                await readAllSettings();
             }
 
+            // SENDERS (Force Lowercase)
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
-                log("TX: " + str, "log-tx");
+                log("TX: " + str);
             }
 
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
+                let v = valHex.toLowerCase(); // Ensure lowercase values
+                let p = prefix.toLowerCase();
+
                 let payloadBytes = [];
                 payloadBytes.push(parseInt(lenHex, 16));
-                for (let i = 0; i < valHex.length; i += 2)
-                    payloadBytes.push(parseInt(valHex.substr(i, 2), 16));
+                for (let i = 0; i < v.length; i += 2)
+                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
+
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
                 let checkDec = (targetSum - sum) & 0xff;
-                let checkHex = checkDec.toString(16).padStart(2, "0");
-                await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
+                let checkHex = checkDec
+                    .toString(16)
+                    .padStart(2, "0")
+                    .toLowerCase();
+
+                await sendStatic(`#${p}${checkHex}${lenHex}${v}`);
             }
 
-            function syncInput(id, val) {
-                let el = document.getElementById(id);
-                if (!isNaN(val) && el) {
-                    el.value = val;
-                    el.parentElement.classList.add("synced");
-                    setTimeout(
-                        () => el.parentElement.classList.remove("synced"),
-                        1000,
-                    );
-                }
-            }
-            function highlightBtn(grp, id) {
-                document
-                    .getElementById(grp)
-                    .querySelectorAll(".btn-opt")
-                    .forEach((b) => b.classList.remove("selected"));
-                let btn = document.getElementById(id);
-                if (btn) {
-                    btn.classList.add("selected");
-                    btn.classList.add("synced");
-                    setTimeout(() => btn.classList.remove("synced"), 1000);
-                }
-            }
-
+            // FUNCTIONS
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c);
-                // Don't verify Mode to avoid bad sync
             }
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
@@ -751,10 +623,12 @@
                 sendStatic(`#2ec${c}020${l}`);
                 verify("sys");
             }
+
+            // FIXED TYPO: removed extra 'db' from string
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21db${c}04000${s}`); // Fixed typo: single 'd' prefix
+                sendStatic(`#21d${c}04000${s}`);
                 verify("scuba2");
             }
 
@@ -835,6 +709,38 @@
                 }
                 sendCalc(pre, tgt, pay, "04");
                 verify("free");
+            }
+
+            // HELPERS
+            function highlightBtn(grp, id) {
+                document
+                    .getElementById(grp)
+                    .querySelectorAll(".btn-opt")
+                    .forEach((b) => b.classList.remove("selected"));
+                let btn = document.getElementById(id);
+                if (btn) btn.classList.add("selected");
+            }
+            function syncInput(id, val) {
+                let el = document.getElementById(id);
+                if (!isNaN(val) && el) {
+                    el.value = val;
+                    el.parentElement.classList.add("synced");
+                    setTimeout(
+                        () => el.parentElement.classList.remove("synced"),
+                        1000,
+                    );
+                }
+            }
+            function verify(type) {
+                let cmd = "";
+                if (type === "sys") cmd = "#5f9f0200";
+                if (type === "scuba1") cmd = "#5ca20200";
+                if (type === "scuba2") cmd = "#5ba30200";
+                if (type === "free") cmd = "#5da10200";
+                if (cmd)
+                    setTimeout(async () => {
+                        await sendStatic(cmd);
+                    }, 600);
             }
         </script>
     </body>
