@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v6</title>
+        <title>Cosmiq 5 Manager v7 (Reader)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -180,13 +180,19 @@
                 border-left: 3px solid var(--red);
             }
 
+            /* Log area expanded for reading */
             #log {
                 font-family: monospace;
-                font-size: 10px;
-                color: #ced4da;
+                font-size: 11px;
+                color: #2ecc71;
+                background: #212529;
                 margin-top: 30px;
-                text-align: center;
+                text-align: left;
                 white-space: pre-wrap;
+                height: 200px;
+                overflow-y: auto;
+                padding: 10px;
+                border-radius: 8px;
             }
         </style>
     </head>
@@ -197,7 +203,7 @@
         </header>
 
         <button id="connectBtn" class="btn-main" onclick="connect()">
-            Connect
+            Connect & Read Settings
         </button>
         <button
             id="disconnectBtn"
@@ -466,12 +472,13 @@
             </div>
         </div>
 
-        <div id="log">Logs...</div>
+        <div id="log">Waiting for connection...</div>
 
         <script>
             const SVC_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             const TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-            let dev, char;
+            const RX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // Standard Nordic RX
+            let dev, txChar, rxChar;
 
             function tab(id) {
                 document
@@ -486,9 +493,12 @@
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
             }
+
             function log(m) {
                 console.log(m);
-                document.getElementById("log").innerText = m;
+                const logEl = document.getElementById("log");
+                logEl.innerText += "\n" + m;
+                logEl.scrollTop = logEl.scrollHeight;
             }
 
             const fdDiv = document.getElementById("fdAlarms");
@@ -508,7 +518,15 @@
                     dev.addEventListener("gattserverdisconnected", onDisc);
                     const server = await dev.gatt.connect();
                     const service = await server.getPrimaryService(SVC_UUID);
-                    char = await service.getCharacteristic(TX_UUID);
+                    txChar = await service.getCharacteristic(TX_UUID);
+                    rxChar = await service.getCharacteristic(RX_UUID);
+
+                    // START LISTENING (The new magic step)
+                    await rxChar.startNotifications();
+                    rxChar.addEventListener(
+                        "characteristicvaluechanged",
+                        handleNotifications,
+                    );
 
                     document.getElementById("status").innerText = "Connected";
                     document
@@ -519,8 +537,48 @@
                     document.getElementById("disconnectBtn").style.display =
                         "block";
                     document.getElementById("app").style.display = "block";
+
+                    log("Connected. Reading Settings...");
+
+                    // AUTOMATICALLY READ SETTINGS
+                    await readAllSettings();
                 } catch (e) {
                     log("Error: " + e);
+                }
+            }
+
+            function handleNotifications(event) {
+                let value = event.target.value;
+                let decoder = new TextDecoder("utf-8");
+                // Try to decode as text first (some packets are text)
+                let text = decoder.decode(value);
+
+                // Also convert to Hex for analysis
+                let a = [];
+                for (let i = 0; i < value.byteLength; i++) {
+                    a.push(
+                        "0x" +
+                            ("00" + value.getUint8(i).toString(16)).slice(-2),
+                    );
+                }
+                log("RX: " + a.join(" "));
+            }
+
+            async function readAllSettings() {
+                // Sequence from your log
+                const queries = [
+                    "#58a60200", // System?
+                    "#5f9f0200", // General?
+                    "#5ba30200", // Scuba?
+                    "#5ca20200", // Alarms?
+                    "#5da10200", // Freedive?
+                    "#609e0200", // Misc?
+                ];
+
+                for (const q of queries) {
+                    await sendStatic(q);
+                    // Tiny delay to prevent flooding
+                    await new Promise((r) => setTimeout(r, 300));
                 }
             }
 
@@ -533,101 +591,68 @@
                 document.getElementById("connectBtn").style.display = "block";
                 document.getElementById("disconnectBtn").style.display = "none";
                 document.getElementById("app").style.display = "none";
+                log("Disconnected.");
             }
 
-            // --- PACKET BUILDERS (TEXT MODE - FIXED MATH) ---
-
-            // 1. Static: Just sends the string
+            // --- PACKET SENDERS ---
             async function sendStatic(str) {
                 let enc = new TextEncoder();
-                await char.writeValue(enc.encode(str + "\n"));
-                log("Sent: " + str);
+                await txChar.writeValue(enc.encode(str + "\n"));
+                log("TX: " + str);
             }
 
-            // 2. Calculated: Checksum = Target - SumOfPayloadBytes
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
-                // Calculate Sum of Payload Bytes (Length + Value)
-                // Note: valHex string (e.g. "05dc") must be split into bytes (0x05, 0xdc)
                 let payloadBytes = [];
-
-                // Add Length Byte
                 payloadBytes.push(parseInt(lenHex, 16));
-
-                // Add Value Bytes
                 for (let i = 0; i < valHex.length; i += 2) {
                     payloadBytes.push(parseInt(valHex.substr(i, 2), 16));
                 }
-
-                // Calculate Sum
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
-
-                // Calculate Checksum (Target - Sum)
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec.toString(16).padStart(2, "0");
-
-                // Build String
                 let cmd = `#${prefix}${checkHex}${lenHex}${valHex}`;
-
                 await sendStatic(cmd);
             }
 
             // --- MAPPINGS ---
-
             function setTimeoutSec() {
                 let s = parseInt(document.getElementById("timeoutSel").value);
                 let h = s.toString(16).padStart(4, "0");
-                // 2a: Target 0xD2
                 sendCalc("2a", 210, h, "04");
             }
-
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 let h = v.toString(16).padStart(2, "0");
-                // 22: Target 0xDE
                 sendCalc("22", 222, h);
             }
-
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 let h = Math.round(v * 10)
                     .toString(16)
                     .padStart(2, "0");
-                // 2d: Target 0xD3
                 sendCalc("2d", 211, h);
             }
-
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
                 let calc = m * 100 + 1000;
                 let h = calc.toString(16).padStart(4, "0");
-                // 27: Target 0xD9
                 sendCalc("27", 217, h, "04");
             }
-
             function setScubaTime() {
                 let m = parseInt(document.getElementById("scubaTime").value);
                 let h = m.toString(16).padStart(4, "0");
-                // 28: Target 0xD8
                 sendCalc("28", 216, h, "04");
             }
-
             function setFdTime() {
                 let s = parseInt(document.getElementById("fdTimeRange").value);
                 let v = (s - 30) / 5;
                 let h = v.toString(16).padStart(2, "0");
-                // 26: Target 0xE4. Payload is "14" + val.
                 sendCalc("26", 228, "14" + h, "04");
             }
-
             function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
                 let h = (m - 5).toString(16).padStart(2, "0");
-
                 let pre, tgt, pay;
-                // 25: Target 0xDB (219)
-                // 31: Target 0xCF (207)
-                // 32: Target 0xCE (206)
-
                 if (idx === 1) {
                     pre = "25";
                     tgt = 219;
@@ -653,7 +678,6 @@
                     tgt = 206;
                     pay = h + "1e";
                 }
-
                 sendCalc(pre, tgt, pay, "04");
             }
         </script>
