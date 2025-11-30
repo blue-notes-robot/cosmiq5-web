@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v7 (Reader)</title>
+        <title>Cosmiq 5 Manager (Smart Sync)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -135,6 +135,11 @@
                 background: #dee2e6;
                 color: black;
             }
+            .btn-opt.selected {
+                background: #cce5ff;
+                color: #004085;
+                border: 1px solid #b8daff;
+            }
 
             .row {
                 display: flex;
@@ -180,17 +185,16 @@
                 border-left: 3px solid var(--red);
             }
 
-            /* Log area expanded for reading */
             #log {
                 font-family: monospace;
-                font-size: 11px;
-                color: #2ecc71;
-                background: #212529;
+                font-size: 10px;
+                color: #ced4da;
                 margin-top: 30px;
                 text-align: left;
                 white-space: pre-wrap;
-                height: 200px;
-                overflow-y: auto;
+                height: 120px;
+                overflow-y: scroll;
+                background: #212529;
                 padding: 10px;
                 border-radius: 8px;
             }
@@ -203,7 +207,7 @@
         </header>
 
         <button id="connectBtn" class="btn-main" onclick="connect()">
-            Connect & Read Settings
+            Connect & Sync
         </button>
         <button
             id="disconnectBtn"
@@ -224,28 +228,32 @@
                 <div class="card">
                     <h3>System</h3>
                     <span class="label">Default Mode</span>
-                    <div class="grid" style="margin-bottom: 15px">
+                    <div class="grid" id="modeGroup">
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2bd30200')"
+                            id="mode0"
+                            onclick="setMode(0, this)"
                         >
                             Scuba
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2bd10202')"
+                            id="mode2"
+                            onclick="setMode(2, this)"
                         >
                             Freedive
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2bd20201')"
+                            id="mode1"
+                            onclick="setMode(1, this)"
                         >
                             Gauge
                         </button>
                     </div>
+                    <div style="margin-top: 15px"></div>
                     <span class="label">Units</span>
-                    <div class="grid" style="margin-bottom: 15px">
+                    <div class="grid" style="margin-bottom: 10px">
                         <button
                             class="btn-opt"
                             onclick="sendStatic('#23da0201')"
@@ -293,7 +301,7 @@
                             <option value="5">5 Seconds</option>
                             <option value="10">10 Seconds</option>
                             <option value="15">15 Seconds</option>
-                            <option value="20" selected>20 Seconds</option>
+                            <option value="20">20 Seconds</option>
                             <option value="30">30 Seconds</option>
                             <option value="60">1 Minute</option>
                             <option value="120">2 Minutes</option>
@@ -305,34 +313,39 @@
                     <span class="label" style="margin-top: 10px"
                         >Backlight</span
                     >
-                    <div class="grid">
+                    <div class="grid" id="blGroup">
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2ecd0203')"
+                            id="bl3"
+                            onclick="setBL(3, this)"
                         >
                             1
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2ecc0204')"
+                            id="bl4"
+                            onclick="setBL(4, this)"
                         >
                             2
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2ecb0205')"
+                            id="bl5"
+                            onclick="setBL(5, this)"
                         >
                             3
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2eca0206')"
+                            id="bl6"
+                            onclick="setBL(6, this)"
                         >
                             4
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#2ec90207')"
+                            id="bl7"
+                            onclick="setBL(7, this)"
                         >
                             5
                         </button>
@@ -343,10 +356,8 @@
                     <h3 style="color: var(--red)">Advanced</h3>
                     <span class="label">High Salinity Mode</span>
                     <div class="warn">
-                        This is an advanced setting. Please only use this
-                        setting when diving in highly saline water. Your depth
-                        reading will be slightly shallower if used in normal
-                        ocean water.
+                        Use only in highly saline water. Normal water readings
+                        will be incorrect.
                     </div>
                     <div class="grid">
                         <button
@@ -369,22 +380,29 @@
                 <div class="card">
                     <h3>Safety</h3>
                     <span class="label">Safety Factor</span>
-                    <div class="grid" style="margin-bottom: 15px">
+                    <div
+                        class="grid"
+                        id="safeGroup"
+                        style="margin-bottom: 15px"
+                    >
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#21db040000')"
+                            id="safe0"
+                            onclick="setSafe(0, this)"
                         >
                             Conservative
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#21da040001')"
+                            id="safe1"
+                            onclick="setSafe(1, this)"
                         >
                             Normal
                         </button>
                         <button
                             class="btn-opt"
-                            onclick="sendStatic('#21d9040002')"
+                            id="safe2"
+                            onclick="setSafe(2, this)"
                         >
                             Progressive
                         </button>
@@ -472,13 +490,17 @@
             </div>
         </div>
 
-        <div id="log">Waiting for connection...</div>
+        <div id="log">Logs will appear here...</div>
 
         <script>
-            const SVC_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
-            const TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
-            const RX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // Standard Nordic RX
+            const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
+
+            // UI Setup
+            const fdDiv = document.getElementById("fdAlarms");
+            for (let i = 1; i <= 6; i++) {
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i} (m)</span><input type="number" id="fd${i}" value="${i * 10}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+            }
 
             function tab(id) {
                 document
@@ -493,7 +515,6 @@
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
             }
-
             function log(m) {
                 console.log(m);
                 const logEl = document.getElementById("log");
@@ -501,31 +522,49 @@
                 logEl.scrollTop = logEl.scrollHeight;
             }
 
-            const fdDiv = document.getElementById("fdAlarms");
-            for (let i = 1; i <= 6; i++) {
-                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i} (m)</span><input type="number" id="fd${i}" value="${i * 10}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
-            }
-
+            // SMART CONNECTION LOGIC
             async function connect() {
                 try {
+                    log("Scanning...");
                     dev = await navigator.bluetooth.requestDevice({
                         filters: [
                             { namePrefix: "COSMIQ" },
                             { namePrefix: "Deepblu" },
                         ],
-                        optionalServices: [SVC_UUID],
+                        optionalServices: [SERVICE_UUID],
                     });
                     dev.addEventListener("gattserverdisconnected", onDisc);
+                    log("Connecting GATT...");
                     const server = await dev.gatt.connect();
-                    const service = await server.getPrimaryService(SVC_UUID);
-                    txChar = await service.getCharacteristic(TX_UUID);
-                    rxChar = await service.getCharacteristic(RX_UUID);
+                    log("Getting Service...");
+                    const service =
+                        await server.getPrimaryService(SERVICE_UUID);
 
-                    // START LISTENING (The new magic step)
+                    log("Searching Characteristics...");
+                    const chars = await service.getCharacteristics();
+
+                    // AUTO-DISCOVER TX (Write) AND RX (Notify)
+                    for (const c of chars) {
+                        if (
+                            c.properties.write ||
+                            c.properties.writeWithoutResponse
+                        ) {
+                            txChar = c;
+                            log("Found Write Char: " + c.uuid);
+                        }
+                        if (c.properties.notify) {
+                            rxChar = c;
+                            log("Found Notify Char: " + c.uuid);
+                        }
+                    }
+
+                    if (!txChar || !rxChar)
+                        throw new Error("Could not map TX/RX chars.");
+
                     await rxChar.startNotifications();
                     rxChar.addEventListener(
                         "characteristicvaluechanged",
-                        handleNotifications,
+                        handleRX,
                     );
 
                     document.getElementById("status").innerText = "Connected";
@@ -538,47 +577,10 @@
                         "block";
                     document.getElementById("app").style.display = "block";
 
-                    log("Connected. Reading Settings...");
-
-                    // AUTOMATICALLY READ SETTINGS
+                    log("Syncing settings...");
                     await readAllSettings();
                 } catch (e) {
-                    log("Error: " + e);
-                }
-            }
-
-            function handleNotifications(event) {
-                let value = event.target.value;
-                let decoder = new TextDecoder("utf-8");
-                // Try to decode as text first (some packets are text)
-                let text = decoder.decode(value);
-
-                // Also convert to Hex for analysis
-                let a = [];
-                for (let i = 0; i < value.byteLength; i++) {
-                    a.push(
-                        "0x" +
-                            ("00" + value.getUint8(i).toString(16)).slice(-2),
-                    );
-                }
-                log("RX: " + a.join(" "));
-            }
-
-            async function readAllSettings() {
-                // Sequence from your log
-                const queries = [
-                    "#58a60200", // System?
-                    "#5f9f0200", // General?
-                    "#5ba30200", // Scuba?
-                    "#5ca20200", // Alarms?
-                    "#5da10200", // Freedive?
-                    "#609e0200", // Misc?
-                ];
-
-                for (const q of queries) {
-                    await sendStatic(q);
-                    // Tiny delay to prevent flooding
-                    await new Promise((r) => setTimeout(r, 300));
+                    log("Conn Error: " + e);
                 }
             }
 
@@ -594,7 +596,75 @@
                 log("Disconnected.");
             }
 
-            // --- PACKET SENDERS ---
+            // DECODER
+            function handleRX(event) {
+                let val = event.target.value;
+                let hex = [];
+                for (let i = 0; i < val.byteLength; i++)
+                    hex.push(("00" + val.getUint8(i).toString(16)).slice(-2));
+
+                if (hex[0] !== "24") return; // Must start with $
+                let cmd = hex[1];
+
+                if (cmd === "5f") {
+                    // Backlight
+                    let bl = parseInt(hex[6], 16);
+                    highlightBtn("blGroup", "bl" + bl);
+                }
+                if (cmd === "5c") {
+                    // Scuba 1
+                    let depth = (parseInt(hex[4] + hex[5], 16) - 1000) / 100;
+                    document.getElementById("scubaDepth").value = depth;
+                    let time = parseInt(hex[6] + hex[7], 16);
+                    document.getElementById("timeoutSel").value = time;
+                    let air = parseInt(hex[8], 16);
+                    document.getElementById("airRange").value = air;
+                    upd("airVal", air + "%");
+                    let ppo2 = parseInt(hex[9], 16) / 10;
+                    if (ppo2 < 1.0) ppo2 = 1.4;
+                    document.getElementById("ppo2Range").value = ppo2;
+                    upd("ppo2Val", ppo2);
+                }
+                if (cmd === "5b") {
+                    // Scuba 2
+                    let time = parseInt(hex[6] + hex[7], 16);
+                    document.getElementById("scubaTime").value = time;
+                    let safe = parseInt(hex[8], 16);
+                    highlightBtn("safeGroup", "safe" + safe);
+                    let mode = parseInt(hex[9], 16);
+                    highlightBtn("modeGroup", "mode" + mode);
+                }
+                if (cmd === "5d") {
+                    // Free Depths
+                    for (let i = 0; i < 6; i++) {
+                        document.getElementById("fd" + (i + 1)).value =
+                            parseInt(hex[4 + i], 16) + 5;
+                    }
+                }
+                if (cmd === "60") {
+                    // Free Time
+                    let sec = parseInt(hex[4], 16) * 5 + 30;
+                    document.getElementById("fdTimeRange").value = sec;
+                    upd("fdTimeVal", sec + "s");
+                }
+            }
+
+            async function readAllSettings() {
+                const qs = [
+                    "#58a60200",
+                    "#5f9f0200",
+                    "#5ba30200",
+                    "#5ca20200",
+                    "#5da10200",
+                    "#609e0200",
+                ];
+                for (const q of qs) {
+                    await sendStatic(q);
+                    await new Promise((r) => setTimeout(r, 250));
+                }
+            }
+
+            // SENDERS (TEXT MODE - FIXED)
             async function sendStatic(str) {
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
@@ -604,76 +674,103 @@
             async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
                 let payloadBytes = [];
                 payloadBytes.push(parseInt(lenHex, 16));
-                for (let i = 0; i < valHex.length; i += 2) {
+                for (let i = 0; i < valHex.length; i += 2)
                     payloadBytes.push(parseInt(valHex.substr(i, 2), 16));
-                }
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec.toString(16).padStart(2, "0");
-                let cmd = `#${prefix}${checkHex}${lenHex}${valHex}`;
-                await sendStatic(cmd);
+                await sendStatic(`#${prefix}${checkHex}${lenHex}${valHex}`);
             }
 
-            // --- MAPPINGS ---
+            // HELPERS
+            function highlightBtn(grp, id) {
+                document
+                    .getElementById(grp)
+                    .querySelectorAll(".btn-opt")
+                    .forEach((b) => b.classList.remove("selected"));
+                let btn = document.getElementById(id);
+                if (btn) btn.classList.add("selected");
+            }
+            function setMode(m, btn) {
+                highlightBtn("modeGroup", btn.id);
+                let c =
+                    m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
+                sendStatic(c);
+            }
+            function setBL(l, btn) {
+                highlightBtn("blGroup", btn.id);
+                let c = (206 - l).toString(16);
+                sendStatic(`#2ec${c}020${l}`);
+            }
+            function setSafe(s, btn) {
+                highlightBtn("safeGroup", btn.id);
+                let c = (219 - s).toString(16);
+                sendStatic(`#21d${c}04000${s}`);
+            }
+
             function setTimeoutSec() {
                 let s = parseInt(document.getElementById("timeoutSel").value);
-                let h = s.toString(16).padStart(4, "0");
-                sendCalc("2a", 210, h, "04");
+                sendCalc("2a", 210, s.toString(16).padStart(4, "0"), "04");
             }
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
-                let h = v.toString(16).padStart(2, "0");
-                sendCalc("22", 222, h);
+                sendCalc("22", 222, v.toString(16).padStart(2, "0"));
             }
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
-                let h = Math.round(v * 10)
-                    .toString(16)
-                    .padStart(2, "0");
-                sendCalc("2d", 211, h);
+                sendCalc(
+                    "2d",
+                    211,
+                    Math.round(v * 10)
+                        .toString(16)
+                        .padStart(2, "0"),
+                );
             }
             function setScubaDepth() {
                 let m = parseInt(document.getElementById("scubaDepth").value);
-                let calc = m * 100 + 1000;
-                let h = calc.toString(16).padStart(4, "0");
-                sendCalc("27", 217, h, "04");
+                sendCalc(
+                    "27",
+                    217,
+                    (m * 100 + 1000).toString(16).padStart(4, "0"),
+                    "04",
+                );
             }
             function setScubaTime() {
                 let m = parseInt(document.getElementById("scubaTime").value);
-                let h = m.toString(16).padStart(4, "0");
-                sendCalc("28", 216, h, "04");
+                sendCalc("28", 216, m.toString(16).padStart(4, "0"), "04");
             }
             function setFdTime() {
                 let s = parseInt(document.getElementById("fdTimeRange").value);
-                let v = (s - 30) / 5;
-                let h = v.toString(16).padStart(2, "0");
-                sendCalc("26", 228, "14" + h, "04");
+                sendCalc(
+                    "26",
+                    228,
+                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
+                    "04",
+                );
             }
             function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
                 let h = (m - 5).toString(16).padStart(2, "0");
-                let pre, tgt, pay;
-                if (idx === 1) {
-                    pre = "25";
-                    tgt = 219;
+                let pre = "25",
+                    tgt = 219,
                     pay = "0a" + h;
-                } else if (idx === 2) {
-                    pre = "25";
-                    tgt = 219;
-                    pay = h + "13";
-                } else if (idx === 3) {
+                if (idx === 2) pay = h + "13";
+                if (idx === 3) {
                     pre = "31";
                     tgt = 207;
                     pay = "19" + h;
-                } else if (idx === 4) {
+                }
+                if (idx === 4) {
                     pre = "31";
                     tgt = 207;
                     pay = h + "14";
-                } else if (idx === 5) {
+                }
+                if (idx === 5) {
                     pre = "32";
                     tgt = 206;
                     pay = "32" + h;
-                } else if (idx === 6) {
+                }
+                if (idx === 6) {
                     pre = "32";
                     tgt = 206;
                     pay = h + "1e";
