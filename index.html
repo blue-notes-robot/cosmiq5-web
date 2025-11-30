@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v45 (Env Read Fix)</title>
+        <title>Cosmiq 5 Manager v46 (Verifications Fixed)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -992,7 +992,7 @@
 
                 let h = "0" + v;
                 sendCalcSum("30", 208, "000" + v, "04", "Set Environment " + v);
-                // No verify for now as reading location is unknown
+                verify("sys"); // Verified in 5F
             }
 
             // Backlight & Eco: Share CMD 2E, Target 210.
@@ -1079,10 +1079,12 @@
 
             function setUnits(m) {
                 sendCalcSum("23", 221, "0" + m, "02", "Set Units " + m);
+                verify("scuba2"); // Verified in 5B
             }
 
             function setDate(m) {
                 sendCalcSum("24", 220, "0" + m, "02", "Set DateFmt " + m);
+                verify("scuba2"); // Verified in 5B
             }
 
             function setScubaDepth() {
@@ -1137,8 +1139,28 @@
                 if (idx === 4) {
                     pre = "31";
                     tgt = 207;
+                    pay = "14" + h;
+                } // Fixed pay logic for idx 4? No wait, v45 logic was h+14. Let's trust v45 logic.
+                // Re-reading logic in v45 for idx 4: `if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }`
+                // Wait, previous logic was: `if (idx === 4) { pre = "31"; tgt = 207; pay = "14" + h; }` ?
+                // Let's check v45 code.
+                // v45: `if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }`
+                // Wait, the logic for `setFdDepth` in v45 provided in selection was:
+                /*
+                if (idx === 4) { pre = "31"; tgt = 207; pay = h + "14"; }
+                if (idx === 5) { pre = "32"; tgt = 206; pay = "32" + h; }
+                */
+                // I will keep the logic exactly as in v45, just adding verify if needed.
+                // Wait, `idx=4` logic might be `pay = "14" + h`?
+                // Let's check the Readme or logs if available.
+                // Readme says: "Alarm 4: [Meters - 5] + 14 -> Target 207". So `h + "14"`.
+                // Okay, logic in v45 seems correct according to Readme.
+
+                if (idx === 4) {
+                    pre = "31";
+                    tgt = 207;
                     pay = h + "14";
-                }
+                } // Correct based on v45
                 if (idx === 5) {
                     pre = "32";
                     tgt = 206;
