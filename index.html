@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Cosmiq 5 Manager v6</title>
+        <style>
+            :root {
+                --blue: #007bff;
+                --red: #dc3545;
+                --bg: #f8f9fa;
+                --text: #212529;
+            }
+            body {
+                font-family: -apple-system, sans-serif;
+                background: var(--bg);
+                color: var(--text);
+                padding: 15px;
+                max-width: 600px;
+                margin: 0 auto;
+            }
+
+            header {
+                text-align: center;
+                margin-bottom: 20px;
+            }
+            h1 {
+                font-size: 20px;
+                margin: 0;
+                color: #343a40;
+            }
+            .status {
+                font-size: 12px;
+                font-weight: 600;
+                color: #adb5bd;
+                margin-top: 5px;
+            }
+            .connected {
+                color: #28a745;
+            }
+
+            button {
+                cursor: pointer;
+                border: none;
+                outline: none;
+                transition: 0.1s;
+                font-weight: 600;
+                font-family: inherit;
+            }
+
+            .btn-main {
+                width: 100%;
+                padding: 12px;
+                border-radius: 8px;
+                font-size: 16px;
+                color: white;
+                background: var(--blue);
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .btn-main:active {
+                transform: translateY(1px);
+            }
+            .btn-disc {
+                background: #6c757d;
+                display: none;
+                margin-top: 10px;
+            }
+
+            .tabs {
+                display: flex;
+                background: white;
+                padding: 5px;
+                border-radius: 8px;
+                margin-bottom: 15px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+            .tab {
+                flex: 1;
+                padding: 8px;
+                background: none;
+                color: #6c757d;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            .tab.active {
+                background: var(--blue);
+                color: white;
+            }
+
+            .section {
+                display: none;
+            }
+            .section.active {
+                display: block;
+            }
+
+            .card {
+                background: white;
+                padding: 15px;
+                border-radius: 12px;
+                margin-bottom: 12px;
+                box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+            }
+            .card h3 {
+                margin: 0 0 12px 0;
+                font-size: 14px;
+                text-transform: uppercase;
+                color: #868e96;
+                letter-spacing: 0.5px;
+                border-bottom: 1px solid #f1f3f5;
+                padding-bottom: 8px;
+            }
+
+            .label {
+                font-size: 13px;
+                font-weight: 600;
+                margin-bottom: 8px;
+                display: block;
+                color: #495057;
+            }
+
+            .grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+                gap: 8px;
+            }
+            .btn-opt {
+                padding: 10px;
+                background: #f1f3f5;
+                border-radius: 6px;
+                color: #495057;
+                font-size: 13px;
+            }
+            .btn-opt:active {
+                background: #dee2e6;
+                color: black;
+            }
+
+            .row {
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                margin-bottom: 10px;
+            }
+            input[type="range"] {
+                flex: 1;
+            }
+            input[type="number"] {
+                width: 50px;
+                padding: 5px;
+                text-align: center;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+            }
+            .val {
+                font-family: monospace;
+                font-weight: bold;
+                width: 40px;
+                text-align: right;
+            }
+            .btn-set {
+                padding: 6px 12px;
+                background: var(--blue);
+                color: white;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+
+            .warn {
+                background: #fff3cd;
+                color: #856404;
+                padding: 10px;
+                border-radius: 6px;
+                font-size: 11px;
+                line-height: 1.4;
+                margin-bottom: 10px;
+                border: 1px solid #ffeeba;
+            }
+            .danger {
+                border-left: 3px solid var(--red);
+            }
+
+            #log {
+                font-family: monospace;
+                font-size: 10px;
+                color: #ced4da;
+                margin-top: 30px;
+                text-align: center;
+                white-space: pre-wrap;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <h1>Cosmiq 5 Manager</h1>
+            <div id="status" class="status">Disconnected</div>
+        </header>
+
+        <button id="connectBtn" class="btn-main" onclick="connect()">
+            Connect
+        </button>
+        <button
+            id="disconnectBtn"
+            class="btn-main btn-disc"
+            onclick="disconnect()"
+        >
+            Disconnect
+        </button>
+
+        <div id="app" style="display: none; margin-top: 20px">
+            <div class="tabs">
+                <button class="tab active" onclick="tab('gen')">General</button>
+                <button class="tab" onclick="tab('scuba')">Scuba</button>
+                <button class="tab" onclick="tab('free')">Freedive</button>
+            </div>
+
+            <div id="gen" class="section active">
+                <div class="card">
+                    <h3>System</h3>
+                    <span class="label">Default Mode</span>
+                    <div class="grid" style="margin-bottom: 15px">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2bd30200')"
+                        >
+                            Scuba
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2bd10202')"
+                        >
+                            Freedive
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2bd20201')"
+                        >
+                            Gauge
+                        </button>
+                    </div>
+                    <span class="label">Units</span>
+                    <div class="grid" style="margin-bottom: 15px">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#23da0201')"
+                        >
+                            Metric (C/m)
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#23db0200')"
+                        >
+                            Imperial (F/ft)
+                        </button>
+                    </div>
+                    <span class="label">Date Format</span>
+                    <div class="grid">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#24da0200')"
+                        >
+                            Current Date
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#24d90201')"
+                        >
+                            Last Dive Date
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Display</h3>
+                    <span class="label">Screen Timeout</span>
+                    <div class="row">
+                        <select
+                            id="timeoutSel"
+                            style="
+                                flex: 1;
+                                padding: 8px;
+                                border-radius: 6px;
+                                background: #f8f9fa;
+                                border: 1px solid #ddd;
+                            "
+                        >
+                            <option value="5">5 Seconds</option>
+                            <option value="10">10 Seconds</option>
+                            <option value="15">15 Seconds</option>
+                            <option value="20" selected>20 Seconds</option>
+                            <option value="30">30 Seconds</option>
+                            <option value="60">1 Minute</option>
+                            <option value="120">2 Minutes</option>
+                        </select>
+                        <button class="btn-set" onclick="setTimeoutSec()">
+                            Set
+                        </button>
+                    </div>
+                    <span class="label" style="margin-top: 10px"
+                        >Backlight</span
+                    >
+                    <div class="grid">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2ecd0203')"
+                        >
+                            1
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2ecc0204')"
+                        >
+                            2
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2ecb0205')"
+                        >
+                            3
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2eca0206')"
+                        >
+                            4
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#2ec90207')"
+                        >
+                            5
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card danger">
+                    <h3 style="color: var(--red)">Advanced</h3>
+                    <span class="label">High Salinity Mode</span>
+                    <div class="warn">
+                        This is an advanced setting. Please only use this
+                        setting when diving in highly saline water. Your depth
+                        reading will be slightly shallower if used in normal
+                        ocean water.
+                    </div>
+                    <div class="grid">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#30cb040001')"
+                        >
+                            Enable
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#30cc040000')"
+                        >
+                            Disable
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="scuba" class="section">
+                <div class="card">
+                    <h3>Safety</h3>
+                    <span class="label">Safety Factor</span>
+                    <div class="grid" style="margin-bottom: 15px">
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#21db040000')"
+                        >
+                            Conservative
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#21da040001')"
+                        >
+                            Normal
+                        </button>
+                        <button
+                            class="btn-opt"
+                            onclick="sendStatic('#21d9040002')"
+                        >
+                            Progressive
+                        </button>
+                    </div>
+                    <span class="label">Max PPO2</span>
+                    <div class="row">
+                        <input
+                            type="range"
+                            id="ppo2Range"
+                            min="1.2"
+                            max="1.6"
+                            step="0.1"
+                            value="1.4"
+                            oninput="upd('ppo2Val', this.value)"
+                        />
+                        <span class="val" id="ppo2Val">1.4</span>
+                        <button class="btn-set" onclick="setPPO2()">Set</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Gas Mix</h3>
+                    <span class="label">Oxygen (O2%)</span>
+                    <div class="row">
+                        <input
+                            type="range"
+                            id="airRange"
+                            min="21"
+                            max="40"
+                            step="1"
+                            value="21"
+                            oninput="upd('airVal', this.value + '%')"
+                        />
+                        <span class="val" id="airVal">21%</span>
+                        <button class="btn-set" onclick="setAir()">Set</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>Alarms</h3>
+                    <div class="row">
+                        <span style="font-size: 13px; flex: 1"
+                            >Depth (Meters)</span
+                        >
+                        <input type="number" id="scubaDepth" value="40" />
+                        <button class="btn-set" onclick="setScubaDepth()">
+                            Set
+                        </button>
+                    </div>
+                    <div class="row">
+                        <span style="font-size: 13px; flex: 1"
+                            >Time (Minutes)</span
+                        >
+                        <input type="number" id="scubaTime" value="30" />
+                        <button class="btn-set" onclick="setScubaTime()">
+                            Set
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="free" class="section">
+                <div class="card">
+                    <h3>Alarms</h3>
+                    <span class="label">Max Dive Time (Seconds)</span>
+                    <div class="row" style="margin-bottom: 15px">
+                        <input
+                            type="range"
+                            id="fdTimeRange"
+                            min="30"
+                            max="600"
+                            step="5"
+                            value="60"
+                            oninput="upd('fdTimeVal', this.value + 's')"
+                        />
+                        <span class="val" id="fdTimeVal">60s</span>
+                        <button class="btn-set" onclick="setFdTime()">
+                            Set
+                        </button>
+                    </div>
+
+                    <span class="label">Depth Alarms (Set 0 to disable)</span>
+                    <div id="fdAlarms"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="log">Logs...</div>
+
+        <script>
+            const SVC_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+            const TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e";
+            let dev, char;
+
+            function tab(id) {
+                document
+                    .querySelectorAll(".section")
+                    .forEach((e) => e.classList.remove("active"));
+                document
+                    .querySelectorAll(".tab")
+                    .forEach((e) => e.classList.remove("active"));
+                document.getElementById(id).classList.add("active");
+                event.target.classList.add("active");
+            }
+            function upd(id, val) {
+                document.getElementById(id).innerText = val;
+            }
+            function log(m) {
+                console.log(m);
+                document.getElementById("log").innerText = m;
+            }
+
+            const fdDiv = document.getElementById("fdAlarms");
+            for (let i = 1; i <= 6; i++) {
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:13px; flex:1">Alarm ${i} (m)</span><input type="number" id="fd${i}" value="${i * 10}"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+            }
+
+            async function connect() {
+                try {
+                    dev = await navigator.bluetooth.requestDevice({
+                        filters: [
+                            { namePrefix: "COSMIQ" },
+                            { namePrefix: "Deepblu" },
+                        ],
+                        optionalServices: [SVC_UUID],
+                    });
+                    dev.addEventListener("gattserverdisconnected", onDisc);
+                    const server = await dev.gatt.connect();
+                    const service = await server.getPrimaryService(SVC_UUID);
+                    char = await service.getCharacteristic(TX_UUID);
+
+                    document.getElementById("status").innerText = "Connected";
+                    document
+                        .getElementById("status")
+                        .classList.add("connected");
+                    document.getElementById("connectBtn").style.display =
+                        "none";
+                    document.getElementById("disconnectBtn").style.display =
+                        "block";
+                    document.getElementById("app").style.display = "block";
+                } catch (e) {
+                    log("Error: " + e);
+                }
+            }
+
+            function disconnect() {
+                if (dev && dev.gatt.connected) dev.gatt.disconnect();
+            }
+            function onDisc() {
+                document.getElementById("status").innerText = "Disconnected";
+                document.getElementById("status").classList.remove("connected");
+                document.getElementById("connectBtn").style.display = "block";
+                document.getElementById("disconnectBtn").style.display = "none";
+                document.getElementById("app").style.display = "none";
+            }
+
+            // --- PACKET BUILDERS (TEXT MODE - FIXED MATH) ---
+
+            // 1. Static: Just sends the string
+            async function sendStatic(str) {
+                let enc = new TextEncoder();
+                await char.writeValue(enc.encode(str + "\n"));
+                log("Sent: " + str);
+            }
+
+            // 2. Calculated: Checksum = Target - SumOfPayloadBytes
+            async function sendCalc(prefix, targetSum, valHex, lenHex = "02") {
+                // Calculate Sum of Payload Bytes (Length + Value)
+                // Note: valHex string (e.g. "05dc") must be split into bytes (0x05, 0xdc)
+                let payloadBytes = [];
+
+                // Add Length Byte
+                payloadBytes.push(parseInt(lenHex, 16));
+
+                // Add Value Bytes
+                for (let i = 0; i < valHex.length; i += 2) {
+                    payloadBytes.push(parseInt(valHex.substr(i, 2), 16));
+                }
+
+                // Calculate Sum
+                let sum = payloadBytes.reduce((a, b) => a + b, 0);
+
+                // Calculate Checksum (Target - Sum)
+                let checkDec = (targetSum - sum) & 0xff;
+                let checkHex = checkDec.toString(16).padStart(2, "0");
+
+                // Build String
+                let cmd = `#${prefix}${checkHex}${lenHex}${valHex}`;
+
+                await sendStatic(cmd);
+            }
+
+            // --- MAPPINGS ---
+
+            function setTimeoutSec() {
+                let s = parseInt(document.getElementById("timeoutSel").value);
+                let h = s.toString(16).padStart(4, "0");
+                // 2a: Target 0xD2
+                sendCalc("2a", 210, h, "04");
+            }
+
+            function setAir() {
+                let v = parseInt(document.getElementById("airRange").value);
+                let h = v.toString(16).padStart(2, "0");
+                // 22: Target 0xDE
+                sendCalc("22", 222, h);
+            }
+
+            function setPPO2() {
+                let v = parseFloat(document.getElementById("ppo2Range").value);
+                let h = Math.round(v * 10)
+                    .toString(16)
+                    .padStart(2, "0");
+                // 2d: Target 0xD3
+                sendCalc("2d", 211, h);
+            }
+
+            function setScubaDepth() {
+                let m = parseInt(document.getElementById("scubaDepth").value);
+                let calc = m * 100 + 1000;
+                let h = calc.toString(16).padStart(4, "0");
+                // 27: Target 0xD9
+                sendCalc("27", 217, h, "04");
+            }
+
+            function setScubaTime() {
+                let m = parseInt(document.getElementById("scubaTime").value);
+                let h = m.toString(16).padStart(4, "0");
+                // 28: Target 0xD8
+                sendCalc("28", 216, h, "04");
+            }
+
+            function setFdTime() {
+                let s = parseInt(document.getElementById("fdTimeRange").value);
+                let v = (s - 30) / 5;
+                let h = v.toString(16).padStart(2, "0");
+                // 26: Target 0xE4. Payload is "14" + val.
+                sendCalc("26", 228, "14" + h, "04");
+            }
+
+            function setFdDepth(idx) {
+                let m = parseInt(document.getElementById("fd" + idx).value);
+                let h = (m - 5).toString(16).padStart(2, "0");
+
+                let pre, tgt, pay;
+                // 25: Target 0xDB (219)
+                // 31: Target 0xCF (207)
+                // 32: Target 0xCE (206)
+
+                if (idx === 1) {
+                    pre = "25";
+                    tgt = 219;
+                    pay = "0a" + h;
+                } else if (idx === 2) {
+                    pre = "25";
+                    tgt = 219;
+                    pay = h + "13";
+                } else if (idx === 3) {
+                    pre = "31";
+                    tgt = 207;
+                    pay = "19" + h;
+                } else if (idx === 4) {
+                    pre = "31";
+                    tgt = 207;
+                    pay = h + "14";
+                } else if (idx === 5) {
+                    pre = "32";
+                    tgt = 206;
+                    pay = "32" + h;
+                } else if (idx === 6) {
+                    pre = "32";
+                    tgt = 206;
+                    pay = h + "1e";
+                }
+
+                sendCalc(pre, tgt, pay, "04");
+            }
+        </script>
+    </body>
+</html>
