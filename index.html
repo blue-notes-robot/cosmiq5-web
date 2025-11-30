@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v32 (Fixed)</title>
+        <title>Cosmiq 5 Manager v34 (Map Corrected)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -11,6 +11,9 @@
                 --red: #dc3545;
                 --bg: #f8f9fa;
                 --text: #212529;
+                --mono:
+                    "SFMono-Regular", Consolas, "Liberation Mono", Menlo,
+                    Courier, monospace;
             }
             body {
                 font-family: -apple-system, sans-serif;
@@ -181,7 +184,7 @@
                 color: var(--blue);
             }
             .val {
-                font-family: monospace;
+                font-family: var(--mono);
                 font-weight: bold;
                 width: 45px;
                 text-align: right;
@@ -195,12 +198,12 @@
             }
 
             #log {
-                font-family: monospace;
+                font-family: var(--mono);
                 font-size: 10px;
                 color: #aaa;
                 margin-top: 20px;
                 text-align: left;
-                height: 200px;
+                height: 150px;
                 overflow-y: scroll;
                 padding: 10px;
                 border-radius: 8px;
@@ -220,6 +223,52 @@
             .log-info {
                 color: #ffd700;
                 font-weight: bold;
+            }
+
+            /* Byte Hunter Styles */
+            .byte-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-family: var(--mono);
+                font-size: 12px;
+            }
+            .byte-table td,
+            .byte-table th {
+                padding: 6px;
+                border-bottom: 1px solid #eee;
+            }
+            .byte-cell {
+                display: inline-block;
+                padding: 2px 4px;
+                background: #f1f3f5;
+                border-radius: 4px;
+                margin-right: 2px;
+                color: #d63384;
+                font-weight: bold;
+            }
+            .byte-idx {
+                font-size: 9px;
+                color: #adb5bd;
+                display: block;
+                text-align: center;
+                margin-bottom: 2px;
+            }
+            .bit-box {
+                display: flex;
+                gap: 2px;
+                margin-top: 5px;
+            }
+            .bit {
+                flex: 1;
+                background: #eee;
+                text-align: center;
+                font-size: 10px;
+                padding: 4px 0;
+                border-radius: 3px;
+            }
+            .bit.on {
+                background: var(--blue);
+                color: white;
             }
         </style>
     </head>
@@ -253,6 +302,7 @@
                 <button class="tab active" onclick="tab('gen')">General</button>
                 <button class="tab" onclick="tab('scuba')">Scuba</button>
                 <button class="tab" onclick="tab('free')">Freedive</button>
+                <button class="tab" onclick="tab('hunter')">Byte Hunter</button>
             </div>
 
             <div id="gen" class="section active">
@@ -284,18 +334,29 @@
                     </div>
                     <div style="margin-top: 15px"></div>
                     <span class="label">Units & Date</span>
-                    <div class="grid">
-                        <button class="btn-opt" onclick="setUnits(1)">
+                    <div class="grid" id="unitGroup">
+                        <button
+                            class="btn-opt"
+                            id="unit1"
+                            onclick="setUnits(1)"
+                        >
                             Metric
                         </button>
-                        <button class="btn-opt" onclick="setUnits(0)">
+                        <button
+                            class="btn-opt"
+                            id="unit0"
+                            onclick="setUnits(0)"
+                        >
                             Imperial
                         </button>
-                        <button class="btn-opt" onclick="setDate(0)">
-                            Now
+                    </div>
+                    <div style="margin-top: 8px"></div>
+                    <div class="grid" id="dateGroup">
+                        <button class="btn-opt" id="date0" onclick="setDate(0)">
+                            DD/MM
                         </button>
-                        <button class="btn-opt" onclick="setDate(1)">
-                            Last Dive
+                        <button class="btn-opt" id="date1" onclick="setDate(1)">
+                            MM/DD
                         </button>
                     </div>
                 </div>
@@ -467,9 +528,49 @@
                             Set
                         </button>
                     </div>
-
                     <span class="label">Depth Alarms (m)</span>
                     <div id="fdAlarms"></div>
+                </div>
+            </div>
+
+            <div id="hunter" class="section">
+                <div class="card">
+                    <h3>Byte Hunter</h3>
+                    <p
+                        style="
+                            font-size: 12px;
+                            color: #666;
+                            margin-bottom: 15px;
+                        "
+                    >
+                        Use this tool to find missing settings. Packet $5B bytes
+                        4 & 5 are confirmed Units/Date.
+                    </p>
+                    <button
+                        class="btn-main"
+                        onclick="readAllSettings()"
+                        style="background: #6f42c1; margin-bottom: 15px"
+                    >
+                        Refetch All
+                    </button>
+
+                    <div id="hunterTable">
+                        <!-- Populated by JS -->
+                        <div
+                            style="
+                                text-align: center;
+                                padding: 20px;
+                                color: #aaa;
+                            "
+                        >
+                            No data received yet...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>$58 Analysis (System Flags?)</h3>
+                    <div id="bits58" class="bit-box"></div>
                 </div>
             </div>
         </div>
@@ -479,7 +580,9 @@
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
             let dev, txChar, rxChar;
+            let memMap = {}; // Stores latest packets for Hunter
 
+            // UI Init
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
@@ -507,6 +610,7 @@
                 el.scrollTop = el.scrollHeight;
             }
 
+            // Connection
             async function connect() {
                 try {
                     log("Scanning...");
@@ -521,7 +625,6 @@
                     const server = await dev.gatt.connect();
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
-
                     const chars = await service.getCharacteristics();
                     for (const c of chars) {
                         if (
@@ -569,6 +672,7 @@
                 log("Disconnected.");
             }
 
+            // RX Handler
             function handleRX(event) {
                 let dec = new TextDecoder("utf-8");
                 let text = dec.decode(event.target.value);
@@ -584,6 +688,11 @@
                 if (clean.length < 4) return;
                 let cmd = clean.substr(0, 2);
 
+                // Store for Byte Hunter
+                memMap[cmd] = clean;
+                updateHunter();
+
+                // Parsing Logic
                 if (cmd === "5F") {
                     // Backlight
                     let bl = parseInt(clean.substr(10, 2), 16);
@@ -594,12 +703,10 @@
                 }
 
                 if (cmd === "5C") {
-                    // Scuba Config 1
-                    // Chars 6-9: Depth Alarm
+                    // Scuba 1
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
 
-                    // Chars 10-13: Screen Timeout Index (CORRECTED LOCATION)
                     let timeOut = parseInt(clean.substr(10, 4), 16);
                     if (timeOut < 10) {
                         document.getElementById("timeoutSel").value = timeOut;
@@ -616,47 +723,98 @@
                         log("> Parsed Timeout Index: " + timeOut);
                     }
 
-                    // Chars 14-15: Air Mix
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
                         upd("airVal", air + "%");
                     }
-
                     log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
                 }
 
                 if (cmd === "5B") {
-                    // Scuba Config 2
-                    // Chars 10-13: Time Alarm (Minutes) (CORRECTED LOCATION)
+                    // Scuba 2
+                    // Byte 0 (6-7): Possible Safety Factor?
+                    let safe = parseInt(clean.substr(6, 2), 16);
+                    if (safe <= 2) {
+                        highlightBtn("safeGroup", "safe" + safe);
+                        log("> Parsed Safety: " + safe);
+                    }
+
+                    // Byte 2-3 (10-13): Time Alarm
                     let timeAlarm = parseInt(clean.substr(10, 4), 16);
                     if (!isNaN(timeAlarm)) {
                         syncInput("scubaTime", timeAlarm);
                         log("> Parsed Scuba Time Alarm: " + timeAlarm);
                     }
 
-                    // Chars 14-15: Safety Factor
-                    let safe = parseInt(clean.substr(14, 2), 16);
-                    highlightBtn("safeGroup", "safe" + safe);
+                    // Byte 4 (14-15): Date Mode (User Confirmed)
+                    let dMode = parseInt(clean.substr(14, 2), 16);
+                    if (!isNaN(dMode)) {
+                        highlightBtn("dateGroup", "date" + dMode);
+                        log("> Parsed Date Mode: " + dMode);
+                    }
 
-                    // Chars 16-17: Default Mode
-                    let mode = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(mode)) {
-                        highlightBtn("modeGroup", "mode" + mode);
-                        log("> Parsed Mode: " + mode);
+                    // Byte 5 (16-17): Units (User Confirmed)
+                    let uMode = parseInt(clean.substr(16, 2), 16);
+                    if (!isNaN(uMode)) {
+                        highlightBtn("unitGroup", "unit" + uMode);
+                        log("> Parsed Units: " + uMode);
                     }
                 }
 
                 if (cmd === "5D") {
+                    // Freedive Depth
                     for (let i = 0; i < 6; i++) {
                         let val = parseInt(clean.substr(6 + i * 2, 2), 16);
                         syncInput("fd" + (i + 1), val + 5);
                     }
                 }
                 if (cmd === "60") {
+                    // Freedive Time
                     let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
                     syncInput("fdTimeRange", sec);
                     upd("fdTimeVal", sec + "s");
+                }
+            }
+
+            function updateHunter() {
+                let html = `<table class="byte-table"><tr><th>CMD</th><th>Payload (Raw Hex)</th></tr>`;
+                const commands = [
+                    { id: "58", desc: "System ($58)" },
+                    { id: "5F", desc: "System ($5F)" },
+                    { id: "5C", desc: "Scuba 1 ($5C)" },
+                    { id: "5B", desc: "Scuba 2 ($5B)" },
+                    { id: "5D", desc: "FD Depth ($5D)" },
+                    { id: "60", desc: "FD Time ($60)" },
+                ];
+
+                commands.forEach((c) => {
+                    let raw = memMap[c.id] || "No Data";
+                    let payloadHtml = "";
+                    if (raw !== "No Data") {
+                        // Skip CMD(2), CHK(2), LEN(2) -> Start at 6
+                        let payload = raw.substring(6);
+                        for (let i = 0; i < payload.length; i += 2) {
+                            payloadHtml += `<div class="byte-cell"><span class="byte-idx">${i / 2}</span>${payload.substr(i, 2)}</div>`;
+                        }
+                    }
+                    html += `<tr><td><strong>${c.id}</strong><br><span style="font-size:10px">${c.desc}</span></td><td>${payloadHtml || raw}</td></tr>`;
+                });
+                html += `</table>`;
+                document.getElementById("hunterTable").innerHTML = html;
+
+                // Analyze $58 for bit flags
+                if (memMap["58"]) {
+                    let hex = memMap["58"].substring(6, 8); // First byte of payload
+                    let val = parseInt(hex, 16);
+                    if (!isNaN(val)) {
+                        let bitsHtml = "";
+                        for (let i = 7; i >= 0; i--) {
+                            let on = (val >> i) & 1;
+                            bitsHtml += `<div class="bit ${on ? "on" : ""}">Bit ${i}<br>${on}</div>`;
+                        }
+                        document.getElementById("bits58").innerHTML = bitsHtml;
+                    }
                 }
             }
 
@@ -671,14 +829,12 @@
                 ];
                 for (const q of qs) {
                     await sendStatic(q, "Read Config");
-                    await new Promise((r) => setTimeout(r, 400));
+                    await new Promise((r) => setTimeout(r, 300));
                 }
             }
 
-            // --- SYSTEM TEST ---
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---", "log-info");
-
                 log("1. Set Safety -> Progressive");
                 await setSafe(2, document.getElementById("safe2"));
                 await new Promise((r) => setTimeout(r, 800));
@@ -688,33 +844,18 @@
                 await setAir();
                 await new Promise((r) => setTimeout(r, 800));
 
-                log("3. Set PPO2 -> 1.6");
-                document.getElementById("ppo2Range").value = 1.6;
-                await setPPO2();
-                await new Promise((r) => setTimeout(r, 800));
-
-                log("4. Set Timeout -> 30s (Index 1)");
-                document.getElementById("timeoutSel").value = 1;
-                await setTimeoutIndex();
-                await new Promise((r) => setTimeout(r, 800));
-
-                log("5. Set Units -> Imperial");
-                await setUnits(0);
-                await new Promise((r) => setTimeout(r, 800));
-
                 log("--- VERIFYING ---", "log-info");
                 await readAllSettings();
             }
 
-            // SENDERS
             async function sendStatic(str, desc = "") {
+                if (!txChar) return;
                 let enc = new TextEncoder();
                 await txChar.writeValue(enc.encode(str + "\n"));
                 if (!desc) desc = str;
                 log(`<span class="log-tx">TX: ${desc}</span>`);
             }
 
-            // ALGO 1: Full Sum (Target - (Len + Val))
             async function sendCalcSum(
                 prefix,
                 targetSum,
@@ -739,29 +880,24 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
-            // --- FUNCTIONS (VERIFIED TARGETS) ---
+            // --- FUNCTION FIXES ---
 
-            // Backlight: 210
+            // Safety Factor: Target 219 (Algo B)
+            // Fix: sendCalcSum uses Algo A (Target - (Len + Sum)).
+            // To mimic Algo B (Target - Sum), we set TargetA = TargetB + Len.
+            // TargetB = 219, Len = 4 => TargetA = 223.
+            function setSafe(s, btn) {
+                highlightBtn("safeGroup", btn.id);
+                let valStr = "00000" + s;
+                sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
+                verify("scuba2");
+            }
+
             function setBL(l, btn) {
                 highlightBtn("blGroup", btn.id);
                 let v = "0" + l;
                 sendCalcSum("2e", 210, v, "02", "Set Backlight " + (l - 2));
                 verify("sys");
-            }
-
-            // Safety Factor: 219
-            // Algo B (Value Sum): Checksum = Target - PayloadBytes.
-            // Our sendCalcSum does: Checksum = Target - Length - PayloadBytes.
-            // Payload Logic: 04 00 00 Val.
-            // To use sendCalcSum, we cheat: NewTarget = Target - Length.
-            // 219 - 4 = 215.
-            function setSafe(s, btn) {
-                highlightBtn("safeGroup", btn.id);
-                // Payload structure per readme is 04000[Val] where 04 is length.
-                // We send "00000s" as value, and "04" as length.
-                let valStr = "00000" + s;
-                sendCalcSum("21", 215, valStr, "04", "Set Safety " + s);
-                verify("scuba2");
             }
 
             function setMode(m, btn) {
@@ -771,15 +907,13 @@
                 sendStatic(c, "Set Mode");
             }
 
-            // Timeout: Target 214 (Index 0-3)
             function setTimeoutIndex() {
                 let idx = parseInt(document.getElementById("timeoutSel").value);
                 let h = idx.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
-                verify("scuba1"); // Corrected to Verify Scuba 1 ($5C)
+                verify("scuba1");
             }
 
-            // Air: Target 222
             function setAir() {
                 let v = parseInt(document.getElementById("airRange").value);
                 sendCalcSum(
@@ -792,7 +926,6 @@
                 verify("scuba1");
             }
 
-            // PPO2: Target 211
             function setPPO2() {
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalcSum(
@@ -807,12 +940,10 @@
                 verify("scuba1");
             }
 
-            // Units: Target 221 (0xDD)
             function setUnits(m) {
                 sendCalcSum("23", 221, "0" + m, "02", "Set Units " + m);
             }
 
-            // Date: Target 220 (0xDC)
             function setDate(m) {
                 sendCalcSum("24", 220, "0" + m, "02", "Set DateFmt " + m);
             }
