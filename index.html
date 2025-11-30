@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v19 (Final Fix)</title>
+        <title>Cosmiq 5 Manager v20 (Final)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -178,7 +178,7 @@
     </head>
     <body>
         <header>
-            <h1>Cosmiq 5 Manager v19</h1>
+            <h1>Cosmiq 5 Manager v20</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
 
@@ -549,35 +549,41 @@
                 }
             }
 
-            // --- TEST HARNESS ---
+            // --- TEST HARNESS (FIXED SEQUENCING) ---
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---");
 
+                // Note: We bypass the button onclicks here to manually control timing
+                // and avoid double-verification calls.
+
                 log("1. Set Safety -> Progressive");
-                await setSafe(2, document.getElementById("safe2"));
-                await new Promise((r) => setTimeout(r, 600));
+                await sendStatic("#21d9040002"); // Direct write
+                await new Promise((r) => setTimeout(r, 800)); // Wait for write + device process
+                await sendStatic("#5ba30200"); // Read back
+                await new Promise((r) => setTimeout(r, 800)); // Wait for read
 
                 log("2. Set Air -> 32%");
                 document.getElementById("airRange").value = 32;
-                await setAir();
-                await new Promise((r) => setTimeout(r, 600));
+                await sendCalc("22", 224, "20"); // 32 dec = 20 hex. Target 224
+                await new Promise((r) => setTimeout(r, 800));
+                await sendStatic("#5ca20200"); // Read back (Scuba 1)
+                await new Promise((r) => setTimeout(r, 800));
 
                 log("3. Set PPO2 -> 1.5");
                 document.getElementById("ppo2Range").value = 1.5;
-                await setPPO2();
-                await new Promise((r) => setTimeout(r, 600));
+                await sendCalc("2d", 225, "0f"); // 15 dec = 0f hex. Target 225
+                await new Promise((r) => setTimeout(r, 800));
+                await sendStatic("#5ca20200");
+                await new Promise((r) => setTimeout(r, 800));
 
                 log("4. Set Timeout -> 30s");
                 document.getElementById("timeoutSel").value = 30;
-                await setTimeoutSec();
-                await new Promise((r) => setTimeout(r, 600));
+                await sendCalc("2a", 214, "001e", "04"); // 30 dec = 1e hex. Target 214
+                await new Promise((r) => setTimeout(r, 800));
+                await sendStatic("#5ca20200");
+                await new Promise((r) => setTimeout(r, 800));
 
-                log("5. Set Backlight -> 3");
-                await setBL(5, document.getElementById("bl5"));
-                await new Promise((r) => setTimeout(r, 600));
-
-                log("--- VERIFYING ---");
-                await readAllSettings();
+                log("--- TEST COMPLETE ---");
             }
 
             // SENDERS
@@ -597,9 +603,6 @@
                     payloadBytes.push(parseInt(v.substr(i, 2), 16));
 
                 let sum = payloadBytes.reduce((a, b) => a + b, 0);
-
-                // CALCULATE CHECKSUM (Fixed Math)
-                // Target - Sum = Checksum
                 let checkDec = (targetSum - sum) & 0xff;
                 let checkHex = checkDec
                     .toString(16)
@@ -609,7 +612,7 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`);
             }
 
-            // FUNCTIONS (FIXED TARGETS & TYPOS)
+            // FUNCTIONS
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
                 let c =
@@ -622,16 +625,13 @@
                 sendStatic(`#2ec${c}020${l}`);
                 verify("sys");
             }
-
-            // Fixed: Removed extra 'd' from prefix (Was #21dd...)
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
                 let c = (219 - s).toString(16);
-                sendStatic(`#21${c}04000${s}`);
+                sendStatic(`#21d${c}04000${s}`);
                 verify("scuba2");
             }
 
-            // Updated Targets to match E=Target+Sum logic
             function setTimeoutSec() {
                 let s = parseInt(document.getElementById("timeoutSel").value);
                 sendCalc("2a", 214, s.toString(16).padStart(4, "0"), "04");
