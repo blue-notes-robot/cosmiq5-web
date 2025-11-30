@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v36 (Safety Fix)</title>
+        <title>Cosmiq 5 Manager v37 (Timeout Fix)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -544,7 +544,7 @@
                         "
                     >
                         Use this tool to find missing settings. <br />
-                        Confirmed: $5B (Units/Date), $5C (Mode).
+                        Confirmed: $5B (Time/Timeout/Date/Units), $5C (Mode).
                     </p>
                     <button
                         class="btn-main"
@@ -714,22 +714,6 @@
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
 
-                    let timeOut = parseInt(clean.substr(10, 4), 16);
-                    if (timeOut < 10) {
-                        document.getElementById("timeoutSel").value = timeOut;
-                        document
-                            .getElementById("timeoutSel")
-                            .parentElement.classList.add("synced");
-                        setTimeout(
-                            () =>
-                                document
-                                    .getElementById("timeoutSel")
-                                    .parentElement.classList.remove("synced"),
-                            1000,
-                        );
-                        log("> Parsed Timeout Index: " + timeOut);
-                    }
-
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
@@ -756,21 +740,39 @@
                         log("> Parsed Safety: " + safe);
                     }
 
-                    // Byte 2-3 (10-13): Time Alarm
-                    let timeAlarm = parseInt(clean.substr(10, 4), 16);
+                    // Byte 1 (8-9): Time Alarm (LSB?)
+                    // Log shows 7E (126).
+                    let timeAlarm = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(timeAlarm)) {
                         syncInput("scubaTime", timeAlarm);
                         log("> Parsed Scuba Time Alarm: " + timeAlarm);
                     }
 
-                    // Byte 4 (14-15): Date Mode (User Confirmed)
+                    // Byte 3 (12-13): Screen Timeout (Index)
+                    let timeOut = parseInt(clean.substr(12, 2), 16);
+                    if (timeOut < 10) {
+                        document.getElementById("timeoutSel").value = timeOut;
+                        document
+                            .getElementById("timeoutSel")
+                            .parentElement.classList.add("synced");
+                        setTimeout(
+                            () =>
+                                document
+                                    .getElementById("timeoutSel")
+                                    .parentElement.classList.remove("synced"),
+                            1000,
+                        );
+                        log("> Parsed Timeout Index: " + timeOut);
+                    }
+
+                    // Byte 4 (14-15): Date Mode
                     let dMode = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(dMode)) {
                         highlightBtn("dateGroup", "date" + dMode);
                         log("> Parsed Date Mode: " + dMode);
                     }
 
-                    // Byte 5 (16-17): Units (User Confirmed)
+                    // Byte 5 (16-17): Units
                     let uMode = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(uMode)) {
                         highlightBtn("unitGroup", "unit" + uMode);
@@ -868,27 +870,28 @@
             async function bruteForceSafety() {
                 log("--- STARTING SAFETY BRUTEFORCE ---", "log-info");
 
-                // Attempt 1: 4 Bytes payload (Fix Theory)
-                // Payload: 00 00 00 02. Length: 04. Algo B (Target 219).
+                // Attempt 1: 1 Byte payload
+                // Payload: 02. Length: 01. Algo B (Target 219)
                 // Checksum = 219 - 2 = 217 (D9).
-                // Packet: #21D90400000002
-                log("Attempt 1: 4 Bytes (Algo B)");
-                await sendStatic("#21D90400000002");
+                // Packet: #21D90102
+                log("Attempt 1: 1 Byte (Algo B)");
+                await sendStatic("#21D90102");
                 await new Promise((r) => setTimeout(r, 500));
 
-                // Attempt 2: 4 Bytes payload (Algo A - Target 219)
-                // Checksum = 219 - 4 - 2 = 213 (D5).
-                // Packet: #21D50400000002
-                log("Attempt 2: 4 Bytes (Algo A)");
-                await sendStatic("#21D50400000002");
+                // Attempt 2: 1 Byte payload (Algo A)
+                // Algo A: 219 - 1 - 2 = 216 (D8)
+                // Packet: #21D80102
+                log("Attempt 2: 1 Byte (Algo A)");
+                await sendStatic("#21D80102");
                 await new Promise((r) => setTimeout(r, 500));
 
-                // Attempt 3: 2 Bytes payload (Maybe 04 is not length?)
+                // Attempt 3: 2 Bytes payload
                 // Payload: 00 02. Length: 02. Algo B (Target 219)
                 // Checksum = 219 - 2 = 217 (D9).
                 // Packet: #21D9020002
                 log("Attempt 3: 2 Bytes (Algo B)");
                 await sendStatic("#21D9020002");
+                await new Promise((r) => setTimeout(r, 500));
 
                 log("--- DONE --- verify results.");
                 verify("scuba2");
@@ -960,7 +963,7 @@
                 let idx = parseInt(document.getElementById("timeoutSel").value);
                 let h = idx.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
-                verify("scuba1");
+                verify("scuba2"); // Verify via 5B (Byte 3)
             }
 
             function setAir() {
