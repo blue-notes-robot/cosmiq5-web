@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v40 (Safety Algo Fix)</title>
+        <title>Cosmiq 5 Manager v41 (Solved)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -436,22 +436,22 @@
                     >
                         <button
                             class="btn-opt"
-                            id="safe0"
-                            onclick="setSafe(0, this)"
+                            id="safe1"
+                            onclick="setSafe(1, this)"
                         >
                             Consv
                         </button>
                         <button
                             class="btn-opt"
-                            id="safe1"
-                            onclick="setSafe(1, this)"
+                            id="safe2"
+                            onclick="setSafe(2, this)"
                         >
                             Norm
                         </button>
                         <button
                             class="btn-opt"
-                            id="safe2"
-                            onclick="setSafe(2, this)"
+                            id="safe3"
+                            onclick="setSafe(3, this)"
                         >
                             Prog
                         </button>
@@ -554,14 +554,6 @@
                     >
                         Refetch All
                     </button>
-                    <button
-                        class="btn-main"
-                        onclick="bruteForceSafety()"
-                        style="background: #dc3545; margin-bottom: 15px"
-                    >
-                        Bruteforce Safety
-                    </button>
-
                     <div id="hunterTable">
                         <!-- Populated by JS -->
                         <div
@@ -575,11 +567,6 @@
                         </div>
                     </div>
                 </div>
-
-                <div class="card">
-                    <h3>$58 Analysis (System Flags?)</h3>
-                    <div id="bits58" class="bit-box"></div>
-                </div>
             </div>
         </div>
 
@@ -592,9 +579,10 @@
 
             // UI Init
             const fdDiv = document.getElementById("fdAlarms");
-            // Only 5 alarms, as 6th byte is PPO2
-            for (let i = 1; i <= 5; i++) {
-                fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">Alarm ${i}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
+            for (let i = 1; i <= 6; i++) {
+                let lbl = "Alarm " + i;
+                if (i === 6) lbl += " (Write Only)";
+                fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">${lbl}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
             function tab(id) {
@@ -723,7 +711,6 @@
                     }
 
                     // Byte 5 (16-17): Default Mode
-                    // 00=Scuba, 01=Gauge, 02=Freedive
                     let mode = parseInt(clean.substr(16, 2), 16);
                     if (!isNaN(mode)) {
                         highlightBtn("modeGroup", "mode" + mode);
@@ -735,22 +722,21 @@
 
                 if (cmd === "5B") {
                     // Scuba 2
-                    // Byte 0 (6-7): Possible Safety Factor?
+                    // Byte 0 (6-7): Safety Factor
                     let safe = parseInt(clean.substr(6, 2), 16);
-                    if (safe <= 2) {
+                    if (safe >= 1 && safe <= 3) {
                         highlightBtn("safeGroup", "safe" + safe);
                         log("> Parsed Safety: " + safe);
                     }
 
-                    // Byte 1 (8-9): Time Alarm (LSB?)
-                    // Log shows 7E (126).
+                    // Byte 1 (8-9): Time Alarm
                     let timeAlarm = parseInt(clean.substr(8, 2), 16);
                     if (!isNaN(timeAlarm)) {
                         syncInput("scubaTime", timeAlarm);
                         log("> Parsed Scuba Time Alarm: " + timeAlarm);
                     }
 
-                    // Byte 3 (12-13): Screen Timeout (Index)
+                    // Byte 3 (12-13): Screen Timeout
                     let timeOut = parseInt(clean.substr(12, 2), 16);
                     if (timeOut < 10) {
                         document.getElementById("timeoutSel").value = timeOut;
@@ -831,20 +817,6 @@
                 });
                 html += `</table>`;
                 document.getElementById("hunterTable").innerHTML = html;
-
-                // Analyze $58 for bit flags
-                if (memMap["58"]) {
-                    let hex = memMap["58"].substring(6, 8); // First byte of payload
-                    let val = parseInt(hex, 16);
-                    if (!isNaN(val)) {
-                        let bitsHtml = "";
-                        for (let i = 7; i >= 0; i--) {
-                            let on = (val >> i) & 1;
-                            bitsHtml += `<div class="bit ${on ? "on" : ""}">Bit ${i}<br>${on}</div>`;
-                        }
-                        document.getElementById("bits58").innerHTML = bitsHtml;
-                    }
-                }
             }
 
             async function readAllSettings() {
@@ -865,7 +837,7 @@
             async function runSystemTest() {
                 log("--- STARTING SYSTEM TEST ---", "log-info");
                 log("1. Set Safety -> Progressive");
-                await setSafe(2, document.getElementById("safe2"));
+                await setSafe(3, document.getElementById("safe3")); // Changed to 3
                 await new Promise((r) => setTimeout(r, 800));
 
                 log("2. Set Air -> 32%");
@@ -875,45 +847,6 @@
 
                 log("--- VERIFYING ---", "log-info");
                 await readAllSettings();
-            }
-
-            // --- Bruteforcer for Safety ---
-            async function bruteForceSafety() {
-                log("--- STARTING SAFETY BRUTEFORCE ---", "log-info");
-
-                // Attempt 0: 2 Bytes payload (Algo A - Standardized)
-                // Payload: 00 02. Length: 02. Algo A (Target 219)
-                // Checksum = 219 - 2 - 2 = 215 (D7).
-                // Packet: #21D7020002
-                log("Attempt 0: 2 Byte (Algo A - Standard)");
-                await sendStatic("#21D7020002");
-                await new Promise((r) => setTimeout(r, 500));
-
-                // Attempt 1: 1 Byte payload
-                // Payload: 02. Length: 01. Algo B (Target 219)
-                // Checksum = 219 - 2 = 217 (D9).
-                // Packet: #21D90102
-                log("Attempt 1: 1 Byte (Algo B)");
-                await sendStatic("#21D90102");
-                await new Promise((r) => setTimeout(r, 500));
-
-                // Attempt 2: 1 Byte payload (Algo A)
-                // Algo A: 219 - 1 - 2 = 216 (D8)
-                // Packet: #21D80102
-                log("Attempt 2: 1 Byte (Algo A)");
-                await sendStatic("#21D80102");
-                await new Promise((r) => setTimeout(r, 500));
-
-                // Attempt 3: 2 Bytes payload
-                // Payload: 00 02. Length: 02. Algo B (Target 219)
-                // Checksum = 219 - 2 = 217 (D9).
-                // Packet: #21D9020002
-                log("Attempt 3: 2 Bytes (Algo B)");
-                await sendStatic("#21D9020002");
-                await new Promise((r) => setTimeout(r, 500));
-
-                log("--- DONE --- verify results.");
-                verify("scuba2");
             }
 
             async function sendStatic(str, desc = "") {
@@ -950,14 +883,13 @@
 
             // --- FUNCTION FIXES ---
 
-            // Safety Factor: Target 219 (Algo B)
-            // Fix 3: Standardize to Algo A, 2 Bytes (matching other cmds)
-            // Target 219, Len 2, Payload 00 0[Val].
+            // Safety Factor: Target 223 (Algo A)
+            // Log verified: Consv=1, Norm=2, Prog=3 (assumed)
+            // Packet: #21[Chk]04000[Val]
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
-                // Standard 2-byte payload: "000s"
                 let valStr = "000" + s;
-                sendCalcSum("21", 219, valStr, "02", "Set Safety " + s);
+                sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
                 verify("scuba2");
             }
 
@@ -970,18 +902,17 @@
 
             function setMode(m, btn) {
                 highlightBtn("modeGroup", btn.id);
-                // Fixed logic and removed duplicate var declaration
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
                 sendStatic(c, "Set Mode");
-                verify("scuba1"); // Verify via 5C
+                verify("scuba1");
             }
 
             function setTimeoutIndex() {
                 let idx = parseInt(document.getElementById("timeoutSel").value);
                 let h = idx.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
-                verify("scuba2"); // Verify via 5B (Byte 3)
+                verify("scuba2");
             }
 
             function setAir() {
@@ -1007,7 +938,7 @@
                     "02",
                     "Set PPO2 " + v,
                 );
-                verify("free"); // PPO2 is in 5D (Free)
+                verify("free");
             }
 
             function setUnits(m) {
@@ -1077,7 +1008,14 @@
                     tgt = 206;
                     pay = "32" + h;
                 }
-                // Index 6 removed as it overlaps PPO2
+
+                // Alarm 6: Valid write, but not readable via $5D (masked by PPO2)
+                if (idx === 6) {
+                    pre = "32";
+                    tgt = 206;
+                    pay = h + "1e";
+                }
+
                 sendCalcSum(
                     pre,
                     tgt,
@@ -1085,7 +1023,8 @@
                     "04",
                     "Set FD Depth " + idx + " to " + m + "m",
                 );
-                verify("free");
+
+                if (idx < 6) verify("free");
             }
 
             function highlightBtn(grp, id) {
