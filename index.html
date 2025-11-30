@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v31 (Corrected)</title>
+        <title>Cosmiq 5 Manager v32 (Fixed)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -594,10 +594,29 @@
                 }
 
                 if (cmd === "5C") {
-                    // Scuba 1
+                    // Scuba Config 1
+                    // Chars 6-9: Depth Alarm
                     let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                     syncInput("scubaDepth", depth);
 
+                    // Chars 10-13: Screen Timeout Index (CORRECTED LOCATION)
+                    let timeOut = parseInt(clean.substr(10, 4), 16);
+                    if (timeOut < 10) {
+                        document.getElementById("timeoutSel").value = timeOut;
+                        document
+                            .getElementById("timeoutSel")
+                            .parentElement.classList.add("synced");
+                        setTimeout(
+                            () =>
+                                document
+                                    .getElementById("timeoutSel")
+                                    .parentElement.classList.remove("synced"),
+                            1000,
+                        );
+                        log("> Parsed Timeout Index: " + timeOut);
+                    }
+
+                    // Chars 14-15: Air Mix
                     let air = parseInt(clean.substr(14, 2), 16);
                     if (!isNaN(air)) {
                         document.getElementById("airRange").value = air;
@@ -608,22 +627,24 @@
                 }
 
                 if (cmd === "5B") {
-                    // Scuba 2
-                    // Bytes 10-13 = Timeout (confirmed by user)
-                    let timeOut = parseInt(clean.substr(10, 4), 16);
-                    if (timeOut < 10) {
-                        // Safety check to ensure it's an index
-                        document.getElementById("timeoutSel").value = timeOut;
-                        document
-                            .getElementById("timeoutSel")
-                            .parentElement.classList.add("synced");
-                        log("> Parsed Timeout Index: " + timeOut);
+                    // Scuba Config 2
+                    // Chars 10-13: Time Alarm (Minutes) (CORRECTED LOCATION)
+                    let timeAlarm = parseInt(clean.substr(10, 4), 16);
+                    if (!isNaN(timeAlarm)) {
+                        syncInput("scubaTime", timeAlarm);
+                        log("> Parsed Scuba Time Alarm: " + timeAlarm);
                     }
 
+                    // Chars 14-15: Safety Factor
                     let safe = parseInt(clean.substr(14, 2), 16);
                     highlightBtn("safeGroup", "safe" + safe);
 
-                    // Let's grab Time Alarm from here too just in case, but logs were fuzzy
+                    // Chars 16-17: Default Mode
+                    let mode = parseInt(clean.substr(16, 2), 16);
+                    if (!isNaN(mode)) {
+                        highlightBtn("modeGroup", "mode" + mode);
+                        log("> Parsed Mode: " + mode);
+                    }
                 }
 
                 if (cmd === "5D") {
@@ -728,14 +749,18 @@
                 verify("sys");
             }
 
-            // Safety: 219 (Val Only, but we can fake it via CalcSum if we adjust target)
-            // Checksum = 219 - Val. CalcSum does (Target - (Len+Val)).
-            // So 219 - Val = Target - 2 - Val.  => Target = 221.
-            // Let's stick to the static mapping which is safer and already working.
+            // Safety Factor: 219
+            // Algo B (Value Sum): Checksum = Target - PayloadBytes.
+            // Our sendCalcSum does: Checksum = Target - Length - PayloadBytes.
+            // Payload Logic: 04 00 00 Val.
+            // To use sendCalcSum, we cheat: NewTarget = Target - Length.
+            // 219 - 4 = 215.
             function setSafe(s, btn) {
                 highlightBtn("safeGroup", btn.id);
-                let c = (219 - s).toString(16);
-                sendStatic(`#21${c}04000${s}`, "Set Safety " + s);
+                // Payload structure per readme is 04000[Val] where 04 is length.
+                // We send "00000s" as value, and "04" as length.
+                let valStr = "00000" + s;
+                sendCalcSum("21", 215, valStr, "04", "Set Safety " + s);
                 verify("scuba2");
             }
 
@@ -751,7 +776,7 @@
                 let idx = parseInt(document.getElementById("timeoutSel").value);
                 let h = idx.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
-                verify("scuba2"); // Timeout is in 5B (Scuba2)
+                verify("scuba1"); // Corrected to Verify Scuba 1 ($5C)
             }
 
             // Air: Target 222
