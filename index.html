@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v48 (Final)</title>
+        <title>Cosmiq 5 Manager v67 (Timeout Solved)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -64,6 +64,9 @@
             }
             .btn-main:active {
                 transform: scale(0.98);
+            }
+            .btn-test {
+                background: #6f42c1;
             }
             .btn-disc {
                 background: #6c757d;
@@ -380,13 +383,13 @@
                                 border: 1px solid #ced4da;
                             "
                         >
-                            <option value="0">5 s</option>
-                            <option value="1">10 s</option>
-                            <option value="2">15 s</option>
-                            <option value="3">20 s</option>
-                            <option value="4">30 s</option>
-                            <option value="5">1 min</option>
-                            <option value="6">2 min</option>
+                            <option value="5">5 s</option>
+                            <option value="10">10 s</option>
+                            <option value="15">15 s</option>
+                            <option value="20">20 s</option>
+                            <option value="30">30 s</option>
+                            <option value="60">1 min</option>
+                            <option value="120">2 min</option>
                         </select>
                         <button class="btn-set" onclick="setTimeoutIndex()">
                             Set
@@ -424,7 +427,9 @@
                     </div>
 
                     <div style="margin-top: 15px"></div>
-                    <span class="label">Power-Saving Mode (< 5% Battery)</span>
+                    <span class="label"
+                        >Power-Saving Mode (&lt; 5% Battery)</span
+                    >
                     <div class="grid" id="ecoGroup">
                         <button
                             class="btn-opt"
@@ -456,11 +461,11 @@
                             High Salinity
                         </button>
                         <button class="btn-opt" id="env2" onclick="setEnv(2)">
-                            Altitude >300m
+                            Altitude &gt;300m
                         </button>
                     </div>
                     <div id="salinityWarn" class="warning-box">
-                        <strong>⚠️ Advanced Setting</strong><br />
+                        <strong>WARNING: Advanced Setting</strong><br />
                         Please only use this setting when diving in highly
                         saline water. Your depth readings will be slightly
                         shallower if used in normal ocean water.
@@ -712,96 +717,103 @@
 
             // RX Handler
             function handleRX(event) {
-                let dec = new TextDecoder("utf-8");
-                let text = dec.decode(event.target.value);
-                let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+                try {
+                    let dec = new TextDecoder("utf-8");
+                    let text = dec.decode(event.target.value);
+                    let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
 
-                if (clean.startsWith("80")) {
-                    log("!!! COMMAND REJECTED !!!", "log-err");
-                    return;
-                }
-
-                log("RX: " + text.trim(), "log-rx");
-
-                if (clean.length < 4) return;
-                let cmd = clean.substr(0, 2);
-
-                memMap[cmd] = clean;
-                updateHunter();
-
-                // Parsing Logic
-                if (cmd === "5F") {
-                    // System: Backlight, Eco, Environment
-                    let env = parseInt(clean.substr(8, 2), 16);
-                    if (!isNaN(env) && env <= 2) {
-                        highlightBtn("envGroup", "env" + env);
-                        document.getElementById("salinityWarn").style.display =
-                            env === 1 ? "block" : "none";
-                        log("> Parsed Env: " + env);
+                    if (clean.startsWith("80")) {
+                        log("!!! COMMAND REJECTED !!!", "log-err");
+                        return;
                     }
 
-                    let raw = parseInt(clean.substr(10, 2), 16);
-                    if (!isNaN(raw)) {
-                        let bl = raw & 0x0f;
-                        let ecoDisabled = (raw & 0x10) > 0;
+                    log("RX: " + text.trim(), "log-rx");
 
-                        sysState.bl = bl;
-                        sysState.eco = !ecoDisabled;
+                    if (clean.length < 4) return;
+                    let cmd = clean.substr(0, 2);
 
-                        highlightBtn("blGroup", "bl" + bl);
+                    memMap[cmd] = clean;
+                    updateHunter();
 
-                        document
-                            .getElementById("ecoOn")
-                            .classList.remove("selected");
-                        document
-                            .getElementById("ecoOff")
-                            .classList.remove("selected");
-                        if (sysState.eco)
+                    // Parsing Logic
+                    if (cmd === "5F") {
+                        // System: Backlight, Eco, Environment
+                        let env = parseInt(clean.substr(8, 2), 16);
+                        if (!isNaN(env) && env <= 2) {
+                            highlightBtn("envGroup", "env" + env);
+                            document.getElementById(
+                                "salinityWarn",
+                            ).style.display = env === 1 ? "block" : "none";
+                            log("> Parsed Env: " + env);
+                        }
+
+                        let raw = parseInt(clean.substr(10, 2), 16);
+                        if (!isNaN(raw)) {
+                            let bl = raw & 0x0f;
+                            let ecoDisabled = (raw & 0x10) > 0;
+
+                            sysState.bl = bl;
+                            sysState.eco = !ecoDisabled;
+
+                            highlightBtn("blGroup", "bl" + bl);
+
                             document
                                 .getElementById("ecoOn")
-                                .classList.add("selected");
-                        else
+                                .classList.remove("selected");
                             document
                                 .getElementById("ecoOff")
-                                .classList.add("selected");
+                                .classList.remove("selected");
+                            if (sysState.eco)
+                                document
+                                    .getElementById("ecoOn")
+                                    .classList.add("selected");
+                            else
+                                document
+                                    .getElementById("ecoOff")
+                                    .classList.add("selected");
 
-                        log(
-                            `> Parsed Sys: BL Level ${bl - 2}, Eco ${sysState.eco ? "ON" : "OFF"}`,
-                        );
-                    }
-                }
-
-                if (cmd === "5C") {
-                    // Scuba 1
-                    let depth = (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
-                    syncInput("scubaDepth", depth);
-
-                    let air = parseInt(clean.substr(14, 2), 16);
-                    if (!isNaN(air)) {
-                        document.getElementById("airRange").value = air;
-                        upd("airVal", air + "%");
+                            log(
+                                `> Parsed Sys: BL Level ${bl - 2}, Eco ${sysState.eco ? "ON" : "OFF"}`,
+                            );
+                        }
                     }
 
-                    let mode = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(mode)) {
-                        highlightBtn("modeGroup", "mode" + mode);
-                        log("> Parsed Mode: " + mode);
+                    if (cmd === "5C") {
+                        // Scuba 1
+                        let depth =
+                            (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
+                        syncInput("scubaDepth", depth);
+
+                        // Bytes 2-3 (10-13): Scuba Time Alarm (Confirmed via user test)
+                        let timeAlarm = parseInt(clean.substr(10, 4), 16);
+                        if (!isNaN(timeAlarm)) {
+                            syncInput("scubaTime", timeAlarm);
+                            log("> Parsed Scuba Time Alarm: " + timeAlarm);
+                        }
+
+                        let air = parseInt(clean.substr(14, 2), 16);
+                        if (!isNaN(air)) {
+                            document.getElementById("airRange").value = air;
+                            upd("airVal", air + "%");
+                        }
+
+                        let mode = parseInt(clean.substr(16, 2), 16);
+                        if (!isNaN(mode)) {
+                            highlightBtn("modeGroup", "mode" + mode);
+                            log("> Parsed Mode: " + mode);
+                        }
+
+                        log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
                     }
 
-                    log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
-                }
+                    if (cmd === "5B") {
+                        // Scuba 2
+                        // Byte 1 used to be time, now seemingly unused or read-only
 
-                if (cmd === "5B") {
-                    // Scuba 2
-                    let timeAlarm = parseInt(clean.substr(8, 2), 16);
-                    if (!isNaN(timeAlarm)) {
-                        syncInput("scubaTime", timeAlarm);
-                        log("> Parsed Scuba Time Alarm: " + timeAlarm);
-                    }
-
-                    let timeOut = parseInt(clean.substr(12, 2), 16);
-                    if (timeOut < 10) {
-                        document.getElementById("timeoutSel").value = timeOut;
+                        let timeOutVal = parseInt(clean.substr(12, 2), 16);
+                        // No lookup map needed, value is raw seconds
+                        document.getElementById("timeoutSel").value =
+                            timeOutVal;
                         document
                             .getElementById("timeoutSel")
                             .parentElement.classList.add("synced");
@@ -812,59 +824,82 @@
                                     .parentElement.classList.remove("synced"),
                             1000,
                         );
-                        log("> Parsed Timeout Index: " + timeOut);
+                        log("> Parsed Timeout: " + timeOutVal + "s");
+
+                        let dMode = parseInt(clean.substr(14, 2), 16);
+                        if (!isNaN(dMode)) {
+                            highlightBtn("dateGroup", "date" + dMode);
+                            log("> Parsed Date Mode: " + dMode);
+                        }
+
+                        let uMode = parseInt(clean.substr(16, 2), 16);
+                        if (!isNaN(uMode)) {
+                            highlightBtn("unitGroup", "unit" + uMode);
+                            log("> Parsed Units: " + uMode);
+                        }
                     }
 
-                    let dMode = parseInt(clean.substr(14, 2), 16);
-                    if (!isNaN(dMode)) {
-                        highlightBtn("dateGroup", "date" + dMode);
-                        log("> Parsed Date Mode: " + dMode);
-                    }
+                    if (cmd === "5D") {
+                        // Freedive 1-2, Safety, PPO2, FD Time
+                        // Byte 0 = Alarm 2 (Even)
+                        let a2 = parseInt(clean.substr(6, 2), 16);
+                        syncInput("fd2", a2 + 5);
 
-                    let uMode = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(uMode)) {
-                        highlightBtn("unitGroup", "unit" + uMode);
-                        log("> Parsed Units: " + uMode);
-                    }
-                }
+                        // Byte 1 = Alarm 1 (Odd)
+                        let a1 = parseInt(clean.substr(8, 2), 16);
+                        syncInput("fd1", a1 + 5);
 
-                if (cmd === "5D") {
-                    // Freedive 1-4, Safety, PPO2
-                    for (let i = 0; i < 4; i++) {
-                        let val = parseInt(clean.substr(6 + i * 2, 2), 16);
-                        syncInput("fd" + (i + 1), val + 5);
-                    }
+                        // Byte 3: FD Time (Confirmed)
+                        let timeIdx = parseInt(clean.substr(12, 2), 16);
+                        if (!isNaN(timeIdx)) {
+                            let sec = timeIdx * 5 + 30;
+                            syncInput("fdTimeRange", sec);
+                            upd("fdTimeVal", sec + "s");
+                            log("> Parsed FD Time: " + sec + "s");
+                        }
 
-                    let safe = parseInt(clean.substr(14, 2), 16);
-                    if (safe >= 0 && safe <= 2) {
-                        highlightBtn("safeGroup", "safe" + safe);
-                        log("> Parsed Safety: " + safe);
-                    }
+                        let safe = parseInt(clean.substr(14, 2), 16);
+                        if (safe >= 0 && safe <= 2) {
+                            highlightBtn("safeGroup", "safe" + safe);
+                            log("> Parsed Safety: " + safe);
+                        }
 
-                    let ppo2Raw = parseInt(clean.substr(16, 2), 16);
-                    if (!isNaN(ppo2Raw)) {
-                        let ppo2 = ppo2Raw / 10;
-                        document.getElementById("ppo2Range").value = ppo2;
-                        upd("ppo2Val", ppo2.toFixed(1));
-                        log("> Parsed PPO2: " + ppo2.toFixed(1));
+                        let ppo2Raw = parseInt(clean.substr(16, 2), 16);
+                        if (!isNaN(ppo2Raw)) {
+                            let ppo2 = ppo2Raw / 10;
+                            document.getElementById("ppo2Range").value = ppo2;
+                            upd("ppo2Val", ppo2.toFixed(1));
+                            log("> Parsed PPO2: " + ppo2.toFixed(1));
+                        }
                     }
-                }
-                if (cmd === "60") {
-                    // Freedive Time & Alarms 5-6
-                    let sec = parseInt(clean.substr(6, 2), 16) * 5 + 30;
-                    syncInput("fdTimeRange", sec);
-                    upd("fdTimeVal", sec + "s");
+                    if (cmd === "60") {
+                        // Freedive Alarms 3-6
+                        // Byte 0 = Alarm 4
+                        let fda4 = parseInt(clean.substr(6, 2), 16);
+                        if (!isNaN(fda4)) {
+                            syncInput("fd4", fda4 + 5);
+                        }
 
-                    let fda5 = parseInt(clean.substr(8, 2), 16);
-                    if (!isNaN(fda5)) {
-                        syncInput("fd5", fda5 + 5);
-                    }
+                        // Byte 1 = Alarm 3
+                        let fda3 = parseInt(clean.substr(8, 2), 16);
+                        if (!isNaN(fda3)) {
+                            syncInput("fd3", fda3 + 5);
+                        }
 
-                    let fda6 = parseInt(clean.substr(10, 2), 16);
-                    if (!isNaN(fda6)) {
-                        syncInput("fd6", fda6 + 5);
-                        log("> Parsed FD Alarm 6: " + (fda6 + 5) + "m");
+                        // Byte 2 = Alarm 6
+                        let fda6 = parseInt(clean.substr(10, 2), 16);
+                        if (!isNaN(fda6)) {
+                            syncInput("fd6", fda6 + 5);
+                        }
+
+                        // Byte 3 = Alarm 5
+                        let fda5 = parseInt(clean.substr(12, 2), 16);
+                        if (!isNaN(fda5)) {
+                            syncInput("fd5", fda5 + 5);
+                        }
                     }
+                } catch (err) {
+                    console.error(err);
                 }
             }
 
@@ -1001,9 +1036,9 @@
             }
 
             function setTimeoutIndex() {
-                let idx = parseInt(document.getElementById("timeoutSel").value);
-                let h = idx.toString(16).padStart(4, "0");
-                sendCalcSum("2a", 214, h, "04", "Set Timeout Idx " + idx);
+                let val = parseInt(document.getElementById("timeoutSel").value);
+                let h = val.toString(16).padStart(4, "0");
+                sendCalcSum("2a", 214, h, "04", "Set Timeout " + val + "s");
                 verify("scuba2");
             }
 
@@ -1063,7 +1098,7 @@
                     "04",
                     "Set Time " + m + "min",
                 );
-                verify("scuba2");
+                verify("scuba1"); // Verified in 5C
             }
 
             function setFdTime() {
@@ -1076,40 +1111,95 @@
                     "Set FD Time " + s + "s",
                 );
                 setTimeout(async () => {
-                    await sendStatic("#609e0200");
+                    await sendStatic("#5da10200", "Verify FD Time");
                 }, 600);
             }
 
-            function setFdDepth(idx) {
+            async function setFdDepth(idx) {
                 let m = parseInt(document.getElementById("fd" + idx).value);
                 let h = (m - 5).toString(16).padStart(2, "0");
                 let pre = "25",
                     tgt = 219,
                     pay = "0a" + h;
-                if (idx === 2) pay = h + "13";
-                if (idx === 3) {
-                    pre = "31";
-                    tgt = 207;
-                    pay = "19" + h;
-                }
-                if (idx === 4) {
-                    pre = "31";
-                    tgt = 207;
-                    pay = "14" + h;
-                }
-                if (idx === 5) {
-                    pre = "32";
-                    tgt = 206;
-                    pay = "32" + h;
+
+                // Helper to get hex of paired alarm from memMap
+                // MemMap packet hex structure: HEADER(6 chars) + PAYLOAD
+                // $5D Payload: [A2] [A1] ... (Confirmed: Even byte 0, Odd byte 1)
+                // $60 Payload: [A4] [A3] [A6] [A5] (Confirmed)
+
+                const getHex = (targetIdx) => {
+                    // Logic to retrieve the value of 'targetIdx' from memory
+                    let pkt, offset;
+
+                    if (targetIdx === 1) {
+                        pkt = memMap["5D"];
+                        offset = 2;
+                    } // A1 is Byte 1 (8-9) of $5D
+                    else if (targetIdx === 2) {
+                        pkt = memMap["5D"];
+                        offset = 0;
+                    } // A2 is Byte 0 (6-7) of $5D
+                    else if (targetIdx === 3) {
+                        pkt = memMap["60"];
+                        offset = 2;
+                    } // A3 is Byte 1 (8-9) of $60
+                    else if (targetIdx === 4) {
+                        pkt = memMap["60"];
+                        offset = 0;
+                    } // A4 is Byte 0 (6-7) of $60
+                    else if (targetIdx === 5) {
+                        pkt = memMap["60"];
+                        offset = 6;
+                    } // A5 is Byte 3 (12-13) of $60
+                    else if (targetIdx === 6) {
+                        pkt = memMap["60"];
+                        offset = 4;
+                    } // A6 is Byte 2 (10-11) of $60
+
+                    if (!pkt) return "00";
+                    return pkt.substr(6 + offset, 2);
+                };
+
+                switch (idx) {
+                    case 1:
+                        // Set 1 (Odd). Send [A2] [New A1].
+                        pre = "25";
+                        tgt = 219;
+                        pay = getHex(2) + h;
+                        break;
+                    case 2:
+                        // Set 2 (Even). Send [New A2] [A1].
+                        pre = "25";
+                        tgt = 219;
+                        pay = h + getHex(1);
+                        break;
+                    case 3:
+                        // Set 3 (Odd). Send [A4] [New A3].
+                        pre = "31";
+                        tgt = 207;
+                        pay = getHex(4) + h;
+                        break;
+                    case 4:
+                        // Set 4 (Even). Send [New A4] [A3].
+                        pre = "31";
+                        tgt = 207;
+                        pay = h + getHex(3);
+                        break;
+                    case 5:
+                        // Set 5 (Odd). Send [A6] [New A5].
+                        pre = "32";
+                        tgt = 206;
+                        pay = getHex(6) + h;
+                        break;
+                    case 6:
+                        // Set 6 (Even). Send [New A6] [A5].
+                        pre = "32";
+                        tgt = 206;
+                        pay = h + getHex(5);
+                        break;
                 }
 
-                if (idx === 6) {
-                    pre = "32";
-                    tgt = 206;
-                    pay = h + "1e";
-                }
-
-                sendCalcSum(
+                await sendCalcSum(
                     pre,
                     tgt,
                     pay,
@@ -1117,11 +1207,15 @@
                     "Set FD Depth " + idx + " to " + m + "m",
                 );
 
-                if (idx <= 4) verify("free");
-                if (idx >= 5)
-                    setTimeout(async () => {
-                        await sendStatic("#609e0200", "Verify FD5/6");
-                    }, 600);
+                // Add delay before verification to ensure write completes
+                setTimeout(() => {
+                    // Packet verification depends on index
+                    if (idx <= 2) verify("free"); // A1, A2 verify against $5D
+                    if (idx >= 3)
+                        setTimeout(async () => {
+                            await sendStatic("#609e0200", "Verify FD3-6");
+                        }, 200); // A3-A6 verify against $60
+                }, 300);
             }
 
             function highlightBtn(grp, id) {
