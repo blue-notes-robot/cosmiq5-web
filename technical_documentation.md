@@ -1,65 +1,60 @@
 # **Deepblu Cosmiq 5 \- Technical Specifications**
 
-This document details the reverse-engineered Bluetooth Low Energy (BLE) protocol for the Deepblu Cosmiq 5\. These findings were empirically derived through packet sniffing and "brute force" analysis.
+This document details the reverse-engineered Bluetooth Low Energy (BLE) protocol for the Deepblu Cosmiq 5\. These findings were derived empirically through packet sniffing and "brute force" analysis.
 
 ## **1\. Connection Details**
 
-* **Service UUID:** 6e400001-b5a3-f393-e0a9-e50e24dcca9e (Nordic UART)  
-* **Write Characteristic (TX):** 6e400002-...  
-* **Notify Characteristic (RX):** 6e400003-...
+* **Service UUID:** 6e400001-b5a3-f393-e0a9-e50e24dcca9e (Nordic UART Service)  
+* **Write Characteristic:** 6e400002-b5a3-f393-e0a9-e50e24dcca9e  
+* **Notify Characteristic:** 6e400003-b5a3-f393-e0a9-e50e24dcca9e
 
 ### **Packet Structure**
 
-All data is sent as ASCII Hex Strings, terminated by a newline (0x0A).  
-Format: \# \[CMD\] \[CHECKSUM\] \[LENGTH\] \[PAYLOAD\] \\n
+Data is transferred as ASCII Hex Strings, terminated by a newline (0x0A).  
+\# \[CMD\] \[CHECKSUM\] \[LENGTH\] \[PAYLOAD\] \\n  
+**Checksum Algorithm (Algorithm A):**
 
-## **2\. Checksum Algorithm**
+Checksum \= (TargetConstant \- (Length \+ SumOfPayloadBytes)) & 0xFF
 
-The device uses a specific subtraction algorithm to validate packets.
-
-**Formula:** Checksum \= (TargetConstant \- (Length \+ SumOfPayloadBytes)) & 0xFF
-
-*Note: For the Safety Factor setting, the Length byte is 04, but the payload logic requires careful padding.*
-
-## **3\. Command Reference (Write)**
+## **2\. Command Reference (Write)**
 
 | Setting | CMD | Target | Length | Payload Structure | Notes |
 | :---- | :---- | :---- | :---- | :---- | :---- |
-| **Safety Factor** | 21 | **223** | 04 | 00 00 00 0\[Val\] | Val: 0=Consv, 1=Norm, 2=Prog |
-| **Air Mix** | 22 | **222** | 02 | 00 \[HexVal\] | Val is O2 % (e.g., 32 \= 0x20) |
-| **Units** | 23 | **221** | 02 | 00 0\[Val\] | 0=Imperial, 1=Metric |
-| **Date Format** | 24 | **220** | 02 | 00 0\[Val\] | 0=DD/MM, 1=Last Dive Date |
-| **FD Depth (1)** | 25 | **219** | 04 | 0a \[Val-5\] | "Sliding Window" Logic |
-| **FD Depth (2)** | 25 | **219** | 04 | \[Val-5\] 13 | Shares CMD with Alarm 1 |
-| **FD Time** | 26 | **218** | 04 | 14 \[Seconds-30\]/5 |  |
-| **Scuba Depth** | 27 | **217** | 04 | Hex\[(Meters\*100)+1000\] |  |
+| **Backlight / Eco** | 2E | **210** | 02 | 00 \[Bitmask\] | Lower 4 bits \= Level (1-5). Bit 4 \= Eco Off. |
+| **Screen Timeout** | 2A | **214** | 04 | 00 00 00 0\[Sec\] | Value is raw seconds (e.g. 1E \= 30s). |
+| **Units** | 23 | **221** | 02 | 00 0\[Val\] | 0=Imperial, 1=Metric. |
+| **Date Format** | 24 | **220** | 02 | 00 0\[Val\] | 0=Current Date, 1=Last Dive. |
+| **Environment** | 30 | **208** | 04 | 00 00 00 0\[Val\] | 0=Normal, 1=Salinity, 2=Altitude. |
+| **Safety Factor** | 21 | **223** | 04 | 00 00 00 0\[Val\] | 0=Conservative, 1=Normal, 2=Progressive. |
+| **Air Mix** | 22 | **222** | 02 | 00 \[HexVal\] | Val \= Oxygen % (e.g. 32 \= 0x20). |
+| **PPO2** | 2D | **211** | 02 | 00 \[Val\*10\] | e.g. 1.4 \= 0E. |
+| **Scuba Depth** | 27 | **217** | 04 | Hex\[(m\*100)+1000\] |  |
 | **Scuba Time** | 28 | **216** | 04 | 00 \[Minutes\] |  |
-| **Timeout** | 2a | **214** | 04 | 00 00 00 0\[Idx\] | Idx: 0=5s ... 6=2min |
-| **Mode** | 2b | **N/A** | N/A | Static Packets | See Source Code (Packet varies by mode) |
-| **PPO2** | 2d | **211** | 02 | 00 \[Val\*10\] | e.g., 1.4 \= 0E |
-| **Backlight/Eco** | 2e | **210** | 02 | 00 \[Bitmask\] | Lower 4 bits=Level, Bit 4=Eco Off |
-| **Environment** | 30 | **208** | 04 | 00 00 00 0\[Val\] | 0=Norm, 1=Salt, 2=High Alt |
-| **FD Depth (3)** | 31 | **207** | 04 | 19 \[Val-5\] |  |
-| **FD Depth (4)** | 31 | **207** | 04 | \[Val-5\] 14 |  |
-| **FD Depth (5)** | 32 | **206** | 04 | 32 \[Val-5\] |  |
-| **FD Depth (6)** | 32 | **206** | 04 | \[Val-5\] 1e | **Write Only** (Not readable via $60) |
+| **FD Time** | 26 | **218** | 04 | 14 \[Sec-30\]/5 |  |
+| **FD Alarms 1 & 2** | 25 | **219** | 04 | \[A2\] \[A1\] | Values are (Depth \- 5). Even alarm first. |
+| **FD Alarms 3 & 4** | 31 | **207** | 04 | \[A4\] \[A3\] | Values are (Depth \- 5). Even alarm first. |
+| **FD Alarms 5 & 6** | 32 | **206** | 04 | \[A6\] \[A5\] | Values are (Depth \- 5). Even alarm first. |
 
-## **4\. Memory Map (Read)**
+### **Freedive Alarm Logic (Crucial)**
 
-Reading is performed by sending query commands. The response contains current settings at specific byte offsets.
+Freedive depth alarms are stored in pairs. To write one alarm, you must read the current value of its partner and send both back in the correct order: \[Even Alarm Byte\] \[Odd Alarm Byte\].
 
-| Query CMD | Response | Byte 0 | Byte 1 | Byte 2 | Byte 3 | Byte 4 | Byte 5 |
-| :---- | :---- | :---- | :---- | :---- | :---- | :---- | :---- |
-| **\#5F...** | $5F | \- | Env Mode | Backlight/Eco | \- | \- | \- |
-| **\#5C...** | $5C | Depth (Hi) | Depth (Lo) | Timeout | \- | Air Mix | **Default Mode** |
-| **\#5B...** | $5B | \- | Time Alarm | \- | Timeout | Date Mode | Units |
-| **\#5D...** | $5D | FD Alarm 1 | FD Alarm 2 | FD Alarm 3 | FD Alarm 4 | **Safety** | **PPO2** |
-| **\#60...** | $60 | FD Time | FD Alarm 5 | FD Alarm 6 | \- | \- | \- |
+## **3\. Memory Map (Read)**
 
-*Note: Offsets above refer to the payload bytes (after the header).*
+Configuration is read by sending query commands. The device responds with packets containing current values at specific byte offsets (0-indexed relative to the payload).
+
+| Query CMD | Response Packet | Data Layout |
+| :---- | :---- | :---- |
+| **\#5F9F0200** | $5F... | **Byte 1:** Env Mode (0/1/2) **Byte 2:** Backlight & Eco Bitmask |
+| **\#5CA20200** | $5C... | **Byte 0-1:** Scuba Depth Alarm **Byte 2-3:** Scuba Time Alarm **Byte 4:** Air Mix **Byte 5:** Default Mode (0=Scuba, 1=Gauge, 2=Free) |
+| **\#5BA30200** | $5B... | **Byte 3:** Screen Timeout (Raw Seconds) **Byte 4:** Date Format **Byte 5:** Units |
+| **\#5DA10200** | $5D... | **Byte 0:** FD Alarm 2 **Byte 1:** FD Alarm 1 **Byte 3:** FD Max Time **Byte 4:** Safety Factor **Byte 5:** PPO2 |
+| **\#609E0200** | $60... | **Byte 0:** FD Alarm 4 **Byte 1:** FD Alarm 3 **Byte 2:** FD Alarm 6 **Byte 3:** FD Alarm 5 |
+
+*Note: Offsets above refer to the payload bytes (after the 6-character header).*
 
 ## **5\. Quirks & Anomalies**
 
-* **PPO2 Location:** PPO2 is strangely stored in the 6th byte of the Freedive packet ($5D), displacing what would logically be the 6th Freedive Alarm.  
-* **FD Alarm 6:** Because PPO2 occupies its slot in the read packet ($5D), Freedive Alarm 6 cannot be read using standard queries. However, it can be successfully written to using Command 32 and appears in packet $60 byte 2\.  
-* **Safety Factor Index:** Uses 0=Conservative, 1=Normal, 2=Progressive.
+* **Split Freedive Data:** Freedive Alarms are split across packets $5D (Alarms 1-2) and $60 (Alarms 3-6).  
+* **Byte Order:** In Freedive Alarm packets (both Read and Write), the **Even** numbered alarm always occupies the first byte, and the **Odd** numbered alarm occupies the second byte.  
+* **PPO2 Location:** PPO2 is stored in the Freedive packet $5D, confusingly mixed with depth alarms and safety settings.
