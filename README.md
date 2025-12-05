@@ -20,7 +20,7 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 
 ### **2\. Connection Steps**
 
-1. Open the [Hosted Web Page](https://www.google.com/search?q=https://your-username.github.io/cosmiq5-web/) (or your local index.html).  
+1. Open the [Hosted Web Page](https://blue-notes-robot.github.io/cosmiq5-web/) (or your local index.html).  
 2. Turn on your Cosmiq 5 and ensure Bluetooth is active.  
 3. Click the big blue **"Connect & Sync"** button.  
 4. Select your device (usually named COSMIQ or Deepblu) from the list.  
