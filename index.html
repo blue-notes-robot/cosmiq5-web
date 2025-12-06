@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v67 (Timeout Solved)</title>
+        <title>Cosmiq 5 Manager v68 (Time Sync Added)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -339,6 +339,17 @@
                     </div>
 
                     <div style="margin-top: 15px"></div>
+                    <span class="label">System Time</span>
+                    <div class="row">
+                        <span style="flex: 1; font-size: 12px; color: #666"
+                            >Sync device clock to browser time</span
+                        >
+                        <button class="btn-set" onclick="setSystemTime()">
+                            Sync Now
+                        </button>
+                    </div>
+
+                    <div style="margin-top: 15px"></div>
                     <span class="label">Units</span>
                     <div class="grid" id="unitGroup">
                         <button
@@ -626,6 +637,17 @@
             // Global State for Bitmasked settings
             let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
 
+            // Map for Screen Timeout
+            const TIMEOUT_MAP = {
+                5: 5,
+                10: 10,
+                15: 15,
+                20: 20,
+                30: 1,
+                60: 2,
+                120: 3,
+            };
+
             // UI Init
             const fdDiv = document.getElementById("fdAlarms");
             for (let i = 1; i <= 6; i++) {
@@ -784,7 +806,6 @@
                             (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                         syncInput("scubaDepth", depth);
 
-                        // Bytes 2-3 (10-13): Scuba Time Alarm (Confirmed via user test)
                         let timeAlarm = parseInt(clean.substr(10, 4), 16);
                         if (!isNaN(timeAlarm)) {
                             syncInput("scubaTime", timeAlarm);
@@ -808,23 +829,27 @@
 
                     if (cmd === "5B") {
                         // Scuba 2
-                        // Byte 1 used to be time, now seemingly unused or read-only
-
                         let timeOutVal = parseInt(clean.substr(12, 2), 16);
-                        // No lookup map needed, value is raw seconds
-                        document.getElementById("timeoutSel").value =
-                            timeOutVal;
-                        document
-                            .getElementById("timeoutSel")
-                            .parentElement.classList.add("synced");
-                        setTimeout(
-                            () =>
-                                document
-                                    .getElementById("timeoutSel")
-                                    .parentElement.classList.remove("synced"),
-                            1000,
+                        let timeoutKey = Object.keys(TIMEOUT_MAP).find(
+                            (key) => TIMEOUT_MAP[key] === timeOutVal,
                         );
-                        log("> Parsed Timeout: " + timeOutVal + "s");
+                        if (timeoutKey) {
+                            document.getElementById("timeoutSel").value =
+                                timeoutKey;
+                            document
+                                .getElementById("timeoutSel")
+                                .parentElement.classList.add("synced");
+                            setTimeout(
+                                () =>
+                                    document
+                                        .getElementById("timeoutSel")
+                                        .parentElement.classList.remove(
+                                            "synced",
+                                        ),
+                                1000,
+                            );
+                            log("> Parsed Timeout: " + timeoutKey + "s");
+                        }
 
                         let dMode = parseInt(clean.substr(14, 2), 16);
                         if (!isNaN(dMode)) {
@@ -841,15 +866,12 @@
 
                     if (cmd === "5D") {
                         // Freedive 1-2, Safety, PPO2, FD Time
-                        // Byte 0 = Alarm 2 (Even)
                         let a2 = parseInt(clean.substr(6, 2), 16);
                         syncInput("fd2", a2 + 5);
 
-                        // Byte 1 = Alarm 1 (Odd)
                         let a1 = parseInt(clean.substr(8, 2), 16);
                         syncInput("fd1", a1 + 5);
 
-                        // Byte 3: FD Time (Confirmed)
                         let timeIdx = parseInt(clean.substr(12, 2), 16);
                         if (!isNaN(timeIdx)) {
                             let sec = timeIdx * 5 + 30;
@@ -874,25 +896,21 @@
                     }
                     if (cmd === "60") {
                         // Freedive Alarms 3-6
-                        // Byte 0 = Alarm 4
                         let fda4 = parseInt(clean.substr(6, 2), 16);
                         if (!isNaN(fda4)) {
                             syncInput("fd4", fda4 + 5);
                         }
 
-                        // Byte 1 = Alarm 3
                         let fda3 = parseInt(clean.substr(8, 2), 16);
                         if (!isNaN(fda3)) {
                             syncInput("fd3", fda3 + 5);
                         }
 
-                        // Byte 2 = Alarm 6
                         let fda6 = parseInt(clean.substr(10, 2), 16);
                         if (!isNaN(fda6)) {
                             syncInput("fd6", fda6 + 5);
                         }
 
-                        // Byte 3 = Alarm 5
                         let fda5 = parseInt(clean.substr(12, 2), 16);
                         if (!isNaN(fda5)) {
                             syncInput("fd5", fda5 + 5);
@@ -978,6 +996,29 @@
 
             // --- FUNCTIONS ---
 
+            function setSystemTime() {
+                let now = new Date();
+                let y = (now.getFullYear() % 100).toString().padStart(2, "0");
+                let m = (now.getMonth() + 1).toString().padStart(2, "0");
+                let d = now.getDate().toString().padStart(2, "0");
+                let h = now.getHours().toString().padStart(2, "0");
+                let min = now.getMinutes().toString().padStart(2, "0");
+                let s = now.getSeconds().toString().padStart(2, "0");
+
+                // Decimal-as-Hex format: 2025 -> "25"
+                let payloadStr = y + m + d + h + min + s;
+
+                // Checksum for Command 20: Target 224 (0xE0), Length 12 (0x0C)
+                // Send payload string as is, sendCalcSum will treat pairs as bytes
+                sendCalcSum(
+                    "20",
+                    224,
+                    payloadStr,
+                    "0c",
+                    "Set Time " + payloadStr,
+                );
+            }
+
             function setEnv(v) {
                 document
                     .getElementById("envGroup")
@@ -1037,7 +1078,10 @@
 
             function setTimeoutIndex() {
                 let val = parseInt(document.getElementById("timeoutSel").value);
-                let h = val.toString(16).padStart(4, "0");
+                let devVal = TIMEOUT_MAP[val];
+                if (devVal === undefined) devVal = 1;
+
+                let h = devVal.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout " + val + "s");
                 verify("scuba2");
             }
@@ -1098,7 +1142,7 @@
                     "04",
                     "Set Time " + m + "min",
                 );
-                verify("scuba1"); // Verified in 5C
+                verify("scuba1");
             }
 
             function setFdTime() {
@@ -1122,39 +1166,27 @@
                     tgt = 219,
                     pay = "0a" + h;
 
-                // Helper to get hex of paired alarm from memMap
-                // MemMap packet hex structure: HEADER(6 chars) + PAYLOAD
-                // $5D Payload: [A2] [A1] ... (Confirmed: Even byte 0, Odd byte 1)
-                // $60 Payload: [A4] [A3] [A6] [A5] (Confirmed)
-
                 const getHex = (targetIdx) => {
-                    // Logic to retrieve the value of 'targetIdx' from memory
                     let pkt, offset;
-
                     if (targetIdx === 1) {
                         pkt = memMap["5D"];
                         offset = 2;
-                    } // A1 is Byte 1 (8-9) of $5D
-                    else if (targetIdx === 2) {
+                    } else if (targetIdx === 2) {
                         pkt = memMap["5D"];
                         offset = 0;
-                    } // A2 is Byte 0 (6-7) of $5D
-                    else if (targetIdx === 3) {
+                    } else if (targetIdx === 3) {
                         pkt = memMap["60"];
                         offset = 2;
-                    } // A3 is Byte 1 (8-9) of $60
-                    else if (targetIdx === 4) {
+                    } else if (targetIdx === 4) {
                         pkt = memMap["60"];
                         offset = 0;
-                    } // A4 is Byte 0 (6-7) of $60
-                    else if (targetIdx === 5) {
+                    } else if (targetIdx === 5) {
                         pkt = memMap["60"];
                         offset = 6;
-                    } // A5 is Byte 3 (12-13) of $60
-                    else if (targetIdx === 6) {
+                    } else if (targetIdx === 6) {
                         pkt = memMap["60"];
                         offset = 4;
-                    } // A6 is Byte 2 (10-11) of $60
+                    }
 
                     if (!pkt) return "00";
                     return pkt.substr(6 + offset, 2);
@@ -1162,37 +1194,31 @@
 
                 switch (idx) {
                     case 1:
-                        // Set 1 (Odd). Send [A2] [New A1].
                         pre = "25";
                         tgt = 219;
                         pay = getHex(2) + h;
                         break;
                     case 2:
-                        // Set 2 (Even). Send [New A2] [A1].
                         pre = "25";
                         tgt = 219;
                         pay = h + getHex(1);
                         break;
                     case 3:
-                        // Set 3 (Odd). Send [A4] [New A3].
                         pre = "31";
                         tgt = 207;
                         pay = getHex(4) + h;
                         break;
                     case 4:
-                        // Set 4 (Even). Send [New A4] [A3].
                         pre = "31";
                         tgt = 207;
                         pay = h + getHex(3);
                         break;
                     case 5:
-                        // Set 5 (Odd). Send [A6] [New A5].
                         pre = "32";
                         tgt = 206;
                         pay = getHex(6) + h;
                         break;
                     case 6:
-                        // Set 6 (Even). Send [New A6] [A5].
                         pre = "32";
                         tgt = 206;
                         pay = h + getHex(5);
@@ -1207,14 +1233,12 @@
                     "Set FD Depth " + idx + " to " + m + "m",
                 );
 
-                // Add delay before verification to ensure write completes
                 setTimeout(() => {
-                    // Packet verification depends on index
-                    if (idx <= 2) verify("free"); // A1, A2 verify against $5D
+                    if (idx <= 2) verify("free");
                     if (idx >= 3)
                         setTimeout(async () => {
                             await sendStatic("#609e0200", "Verify FD3-6");
-                        }, 200); // A3-A6 verify against $60
+                        }, 200);
                 }, 300);
             }
 
