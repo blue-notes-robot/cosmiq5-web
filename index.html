@@ -621,6 +621,14 @@
                         can analyze this data later with external tools.
                     </p>
 
+                    <div style="display: flex; align-items: center; margin-bottom: 10px; font-size: 12px;">
+                        <input type="checkbox" id="forceLegacy" style="margin-right: 8px;">
+                        <label for="forceLegacy">Bypass Inquiry (Legacy Method)</label>
+                    </div>
+                    <p style="font-size: 11px; color: #666; margin-top: -10px; margin-bottom: 15px;">
+                        If the download gets stuck on "Inquiring...", try this. It may result in an empty dump if the device requires the inquiry step.
+                    </p>
+
                     <button
                         class="btn-main"
                         id="btnStartDump"
@@ -1084,19 +1092,27 @@
 
             function startLogDump() {
                 dumpState.active = true;
-                dumpState.phase = 0; // Phase 0: Inquiry
+                dumpState.phase = 0; // Default to inquiry phase
                 dumpState.packets = [];
                 dumpState.lastRx = Date.now();
 
                 document.getElementById("btnStartDump").style.display = "none";
                 document.getElementById("btnSaveDump").style.display = "none";
                 document.getElementById("dumpPreview").style.display = "block";
-                upd("dumpStatus", "Inquiring for unsynced logs...");
+                
+                const useLegacy = document.getElementById('forceLegacy').checked;
 
-                // NEW: Send inquiry command first.
-                // Checksum logic from analysis: Target=256-CMD, Checksum=Target-Length.
-                // For CMD 0x40 (64) and LEN 0x02: Target=192 (C0), Checksum=190 (BE)
-                sendStatic("#40be0200", "Inquire Unsynced Logs");
+                if (useLegacy) {
+                    log("Bypassing inquiry, requesting headers directly.", "log-info");
+                    // We are starting directly with the header request, so set phase to 1
+                    dumpState.phase = 1; 
+                    upd("dumpStatus", "Requesting Headers (Legacy)...");
+                    sendStatic("#41bd0200", "Request Headers");
+                } else {
+                    upd("dumpStatus", "Inquiring for unsynced logs...");
+                    // NEW: Send inquiry command first.
+                    sendStatic("#40be0200", "Inquire Unsynced Logs");
+                }
 
                 dumpMonitorLoop();
             }
