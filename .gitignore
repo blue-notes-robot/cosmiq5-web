@@ -2,4 +2,3 @@
 .pixi/*
 !.pixi/config.toml
 data/
-plots/
