@@ -28,7 +28,7 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 
 ### **3\. Features**
 
-* **General:** Set Time/Date format, Units (Metric/Imperial), Backlight intensity, Screen Timeout, and Power-Saving (Eco) mode.  
+* **General:** Set Time/Date format, Syc Time, Units (Metric/Imperial), Backlight intensity, Screen Timeout, and Power-Saving (Eco) mode.  
 * **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).  
 * **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.  
 * **Freedive:** Configure Max Time and 6 distinct Depth Alarms.  
