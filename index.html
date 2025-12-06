@@ -635,7 +635,10 @@
                         onclick="startLogDump()"
                         style="background: var(--blue)"
                     >
-                        Start Download
+                        Start Standard Download
+                    </button>
+                    <button class="btn-main btn-test" onclick="forceDownloadByIndex()" style="margin-top: 10px; background: var(--yellow); color: #333;">
+                        Force Download by Index (1-150)
                     </button>
                     <button
                         class="btn-main"
@@ -1089,6 +1092,36 @@
             }
 
             // --- LOG DUMP FUNCTIONS ---
+
+            async function forceDownloadByIndex() {
+                log("--- Starting Force Download by Index ---", "log-info");
+                dumpState.active = true;
+                dumpState.packets = [];
+                dumpState.lastRx = Date.now();
+                
+                // Checksum logic: Target=191 (BF), Len=2. CKSUM = 191 - (2 + Payload)
+                const target = 191;
+                const len = 2;
+
+                for (let i = 1; i <= 150; i++) {
+                    let payload = i;
+                    let checksum = (target - (len + payload)) & 0xff;
+                    
+                    let cmd_str = "#41" + checksum.toString(16).padStart(2, '0') + "02" + payload.toString(16).padStart(2, '0');
+                    
+                    log(`Requesting header for log #${i}...`, "log-tx");
+                    await sendStatic(cmd_str);
+                    
+                    // Wait a bit for the device to respond or process
+                    await new Promise(r => setTimeout(r, 500)); 
+
+                    // The existing handleRX logic will see the "42" header packets
+                    // and automatically trigger the body request if a valid header is found.
+                }
+
+                log("--- Force Download by Index Finished ---", "log-info");
+                // We don't call finishDump() here as we want to see all received packets.
+            }
 
             function startLogDump() {
                 dumpState.active = true;
