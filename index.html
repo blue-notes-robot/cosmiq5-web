@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v69 (Log Dump Added)</title>
+        <title>Cosmiq 5 Manager v68 (Time Sync Added)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -282,21 +282,6 @@
                 background: var(--blue);
                 color: white;
             }
-
-            .progress-bar {
-                width: 100%;
-                height: 20px;
-                background-color: #e9ecef;
-                border-radius: 10px;
-                margin: 15px 0;
-                overflow: hidden;
-            }
-            .progress-fill {
-                height: 100%;
-                width: 0%;
-                background-color: var(--blue);
-                transition: width 0.2s;
-            }
         </style>
     </head>
     <body>
@@ -322,7 +307,7 @@
                 <button class="tab" onclick="tab('env')">Environment</button>
                 <button class="tab" onclick="tab('scuba')">Scuba</button>
                 <button class="tab" onclick="tab('free')">Freedive</button>
-                <button class="tab" onclick="tab('logs')">Logs</button>
+                <button class="tab" onclick="tab('hunter')">Diagnostics</button>
             </div>
 
             <div id="gen" class="section active">
@@ -607,63 +592,6 @@
                 </div>
             </div>
 
-            <div id="logs" class="section">
-                <div class="card">
-                    <h3>Raw Log Dump</h3>
-                    <p
-                        style="
-                            font-size: 12px;
-                            color: #666;
-                            margin-bottom: 15px;
-                        "
-                    >
-                        Download the raw hex data from your dive computer. You
-                        can analyze this data later with external tools.
-                    </p>
-
-                    <button
-                        class="btn-main"
-                        id="btnStartDump"
-                        onclick="startLogDump()"
-                        style="background: var(--blue)"
-                    >
-                        Start Download
-                    </button>
-                    <button
-                        class="btn-main"
-                        id="btnSaveDump"
-                        onclick="saveLogDump()"
-                        style="background: #6c757d; display: none"
-                    >
-                        Save to File
-                    </button>
-
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="dumpProgress"></div>
-                    </div>
-                    <div
-                        id="dumpStatus"
-                        style="font-size: 12px; text-align: center; color: #666"
-                    >
-                        Ready
-                    </div>
-
-                    <div
-                        id="dumpPreview"
-                        style="
-                            height: 100px;
-                            overflow-y: auto;
-                            background: #eee;
-                            padding: 5px;
-                            margin-top: 10px;
-                            font-family: monospace;
-                            font-size: 10px;
-                            display: none;
-                        "
-                    ></div>
-                </div>
-            </div>
-
             <div id="hunter" class="section">
                 <div class="card">
                     <h3>Byte Hunter</h3>
@@ -706,15 +634,10 @@
             let dev, txChar, rxChar;
             let memMap = {};
 
-            // Global State
-            let sysState = { bl: 5, eco: true };
-            let dumpState = {
-                active: false,
-                phase: 0, // 0=Idle, 1=Header, 2=Body
-                packets: [],
-                lastRx: 0,
-            };
+            // Global State for Bitmasked settings
+            let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
 
+            // Map for Screen Timeout
             const TIMEOUT_MAP = {
                 5: 5,
                 10: 10,
@@ -826,42 +749,6 @@
                         return;
                     }
 
-                    // Dump Logic
-                    if (dumpState.active) {
-                        let cmd = clean.substr(0, 2);
-                        if (dumpState.phase === 1 && cmd === "42") {
-                            // Header Response
-                            dumpState.packets.push(clean);
-                            dumpState.lastRx = Date.now();
-                            upd(
-                                "dumpStatus",
-                                "Receiving Header: " +
-                                    dumpState.packets.length +
-                                    " packets",
-                            );
-                            // Try to auto-advance if header is done (6 packets)
-                            if (dumpState.packets.length >= 6) {
-                                setTimeout(() => requestLogBody(), 500);
-                            }
-                            return; // Don't log to console to avoid lag
-                        }
-                        if (dumpState.phase === 2 && cmd === "44") {
-                            // Body Response
-                            dumpState.packets.push(clean);
-                            dumpState.lastRx = Date.now();
-                            let count = dumpState.packets.length;
-                            upd(
-                                "dumpStatus",
-                                "Receiving Body: " + count + " packets",
-                            );
-                            document.getElementById(
-                                "dumpProgress",
-                            ).style.width =
-                                Math.min((count / 100) * 100, 90) + "%"; // Fake progress
-                            return;
-                        }
-                    }
-
                     log("RX: " + text.trim(), "log-rx");
 
                     if (clean.length < 4) return;
@@ -870,14 +757,16 @@
                     memMap[cmd] = clean;
                     updateHunter();
 
-                    // Parsing Logic (Standard)
+                    // Parsing Logic
                     if (cmd === "5F") {
+                        // System: Backlight, Eco, Environment
                         let env = parseInt(clean.substr(8, 2), 16);
                         if (!isNaN(env) && env <= 2) {
                             highlightBtn("envGroup", "env" + env);
                             document.getElementById(
                                 "salinityWarn",
                             ).style.display = env === 1 ? "block" : "none";
+                            log("> Parsed Env: " + env);
                         }
 
                         let raw = parseInt(clean.substr(10, 2), 16);
@@ -904,10 +793,15 @@
                                 document
                                     .getElementById("ecoOff")
                                     .classList.add("selected");
+
+                            log(
+                                `> Parsed Sys: BL Level ${bl - 2}, Eco ${sysState.eco ? "ON" : "OFF"}`,
+                            );
                         }
                     }
 
                     if (cmd === "5C") {
+                        // Scuba 1
                         let depth =
                             (parseInt(clean.substr(6, 4), 16) - 1000) / 100;
                         syncInput("scubaDepth", depth);
@@ -915,6 +809,7 @@
                         let timeAlarm = parseInt(clean.substr(10, 4), 16);
                         if (!isNaN(timeAlarm)) {
                             syncInput("scubaTime", timeAlarm);
+                            log("> Parsed Scuba Time Alarm: " + timeAlarm);
                         }
 
                         let air = parseInt(clean.substr(14, 2), 16);
@@ -926,36 +821,51 @@
                         let mode = parseInt(clean.substr(16, 2), 16);
                         if (!isNaN(mode)) {
                             highlightBtn("modeGroup", "mode" + mode);
+                            log("> Parsed Mode: " + mode);
                         }
+
+                        log("> Parsed: Depth:" + depth + "m Air:" + air + "%");
                     }
 
                     if (cmd === "5B") {
+                        // Scuba 2
                         let timeOutVal = parseInt(clean.substr(12, 2), 16);
-                        document.getElementById("timeoutSel").value =
-                            timeOutVal;
-                        document
-                            .getElementById("timeoutSel")
-                            .parentElement.classList.add("synced");
-                        setTimeout(
-                            () =>
-                                document
-                                    .getElementById("timeoutSel")
-                                    .parentElement.classList.remove("synced"),
-                            1000,
+                        let timeoutKey = Object.keys(TIMEOUT_MAP).find(
+                            (key) => TIMEOUT_MAP[key] === timeOutVal,
                         );
+                        if (timeoutKey) {
+                            document.getElementById("timeoutSel").value =
+                                timeoutKey;
+                            document
+                                .getElementById("timeoutSel")
+                                .parentElement.classList.add("synced");
+                            setTimeout(
+                                () =>
+                                    document
+                                        .getElementById("timeoutSel")
+                                        .parentElement.classList.remove(
+                                            "synced",
+                                        ),
+                                1000,
+                            );
+                            log("> Parsed Timeout: " + timeoutKey + "s");
+                        }
 
                         let dMode = parseInt(clean.substr(14, 2), 16);
                         if (!isNaN(dMode)) {
                             highlightBtn("dateGroup", "date" + dMode);
+                            log("> Parsed Date Mode: " + dMode);
                         }
 
                         let uMode = parseInt(clean.substr(16, 2), 16);
                         if (!isNaN(uMode)) {
                             highlightBtn("unitGroup", "unit" + uMode);
+                            log("> Parsed Units: " + uMode);
                         }
                     }
 
                     if (cmd === "5D") {
+                        // Freedive 1-2, Safety, PPO2, FD Time
                         let a2 = parseInt(clean.substr(6, 2), 16);
                         syncInput("fd2", a2 + 5);
 
@@ -967,11 +877,13 @@
                             let sec = timeIdx * 5 + 30;
                             syncInput("fdTimeRange", sec);
                             upd("fdTimeVal", sec + "s");
+                            log("> Parsed FD Time: " + sec + "s");
                         }
 
                         let safe = parseInt(clean.substr(14, 2), 16);
                         if (safe >= 0 && safe <= 2) {
                             highlightBtn("safeGroup", "safe" + safe);
+                            log("> Parsed Safety: " + safe);
                         }
 
                         let ppo2Raw = parseInt(clean.substr(16, 2), 16);
@@ -979,9 +891,11 @@
                             let ppo2 = ppo2Raw / 10;
                             document.getElementById("ppo2Range").value = ppo2;
                             upd("ppo2Val", ppo2.toFixed(1));
+                            log("> Parsed PPO2: " + ppo2.toFixed(1));
                         }
                     }
                     if (cmd === "60") {
+                        // Freedive Alarms 3-6
                         let fda4 = parseInt(clean.substr(6, 2), 16);
                         if (!isNaN(fda4)) {
                             syncInput("fd4", fda4 + 5);
@@ -1080,80 +994,6 @@
                 await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
             }
 
-            // --- LOG DUMP FUNCTIONS ---
-
-            function startLogDump() {
-                dumpState.active = true;
-                dumpState.phase = 1; // Header
-                dumpState.packets = [];
-                dumpState.lastRx = Date.now();
-
-                document.getElementById("btnStartDump").style.display = "none";
-                document.getElementById("btnSaveDump").style.display = "none";
-                document.getElementById("dumpPreview").style.display = "block";
-                upd("dumpStatus", "Requesting Headers...");
-
-                // Packet #41 [BD] 02 00.  Target 0xBF (191).
-                // Cmd 65 = 0x41. Target = 256 - 65 = 191 (BF).
-                // Payload 00 (2 chars). Len 2 (02).
-                // Checksum = BF - 2 = BD.
-                sendStatic("#41bd0200", "Request Headers");
-
-                // Timeout Monitor
-                dumpMonitorLoop();
-            }
-
-            function requestLogBody() {
-                if (dumpState.phase !== 1) return;
-                dumpState.phase = 2;
-                upd("dumpStatus", "Header complete. Requesting Body...");
-
-                // Packet #43 [BB] 02 00. Target 0xBD (189).
-                // Cmd 67 = 0x43. Target = 256 - 67 = 189 (BD).
-                // Payload 00. Len 02.
-                // Checksum = BD - 2 = BB.
-                sendStatic("#43bb0200", "Request Body");
-            }
-
-            function dumpMonitorLoop() {
-                if (!dumpState.active) return;
-
-                // Check for silence timeout (2 seconds)
-                if (Date.now() - dumpState.lastRx > 2000) {
-                    finishDump();
-                } else {
-                    setTimeout(dumpMonitorLoop, 500);
-                }
-            }
-
-            function finishDump() {
-                dumpState.active = false;
-                upd(
-                    "dumpStatus",
-                    "Finished. Total Packets: " + dumpState.packets.length,
-                );
-                document.getElementById("dumpProgress").style.width = "100%";
-                document.getElementById("btnStartDump").style.display =
-                    "inline-block";
-                document.getElementById("btnStartDump").innerText =
-                    "Restart Download";
-                document.getElementById("btnSaveDump").style.display =
-                    "inline-block";
-
-                // Show preview
-                let prev = dumpState.packets.slice(0, 10).join("\n") + "\n...";
-                document.getElementById("dumpPreview").innerText = prev;
-            }
-
-            function saveLogDump() {
-                let content = dumpState.packets.join("\n");
-                let blob = new Blob([content], { type: "text/plain" });
-                let a = document.createElement("a");
-                a.href = URL.createObjectURL(blob);
-                a.download = "cosmiq_dump_" + Date.now() + ".txt";
-                a.click();
-            }
-
             // --- FUNCTIONS ---
 
             function setSystemTime() {
@@ -1165,7 +1005,11 @@
                 let min = now.getMinutes().toString().padStart(2, "0");
                 let s = now.getSeconds().toString().padStart(2, "0");
 
+                // Decimal-as-Hex format: 2025 -> "25"
                 let payloadStr = y + m + d + h + min + s;
+
+                // Checksum for Command 20: Target 224 (0xE0), Length 12 (0x0C)
+                // Send payload string as is, sendCalcSum will treat pairs as bytes
                 sendCalcSum(
                     "20",
                     224,
@@ -1234,7 +1078,10 @@
 
             function setTimeoutIndex() {
                 let val = parseInt(document.getElementById("timeoutSel").value);
-                let h = val.toString(16).padStart(4, "0");
+                let devVal = TIMEOUT_MAP[val];
+                if (devVal === undefined) devVal = 1;
+
+                let h = devVal.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout " + val + "s");
                 verify("scuba2");
             }
