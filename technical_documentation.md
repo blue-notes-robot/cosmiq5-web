@@ -20,6 +20,7 @@ Checksum \= (TargetConstant \- (Length \+ SumOfPayloadBytes)) & 0xFF
 
 | Setting | CMD | Target | Length | Payload Structure | Notes |
 | :---- | :---- | :---- | :---- | :---- | :---- |
+| **Set System Time** | 20 | **224** | 0C | YYMMDDHHMMSS | BCD-like format (Decimal-as-Hex). |
 | **Backlight / Eco** | 2E | **210** | 02 | 00 \[Bitmask\] | Lower 4 bits \= Level (1-5). Bit 4 \= Eco Off. |
 | **Screen Timeout** | 2A | **214** | 04 | 00 00 00 0\[Sec\] | Value is raw seconds (e.g. 1E \= 30s). |
 | **Units** | 23 | **221** | 02 | 00 0\[Val\] | 0=Imperial, 1=Metric. |
