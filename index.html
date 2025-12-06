@@ -825,42 +825,42 @@
                         log("!!! COMMAND REJECTED !!!", "log-err");
                         return;
                     }
-
-                    // Dump Logic
+                    
+                    // --- MODIFIED DUMP LOGIC ---
                     if (dumpState.active) {
+                        dumpState.lastRx = Date.now();
                         let cmd = clean.substr(0, 2);
+
+                        // Phase 0: Waiting for inquiry response
+                        if (dumpState.phase === 0 && cmd === "64") {
+                            log("RX: Got unsynced log count response. Requesting headers.", "log-info");
+                            requestLogHeaders();
+                            return;
+                        }
+                        
+                        // Phase 1: Receiving header packets
                         if (dumpState.phase === 1 && cmd === "42") {
-                            // Header Response
                             dumpState.packets.push(clean);
-                            dumpState.lastRx = Date.now();
-                            upd(
-                                "dumpStatus",
-                                "Receiving Header: " +
-                                    dumpState.packets.length +
-                                    " packets",
-                            );
-                            // Try to auto-advance if header is done (6 packets)
+                            upd("dumpStatus", "Receiving Header: " + dumpState.packets.length + " packets");
+                            
+                            // The decompiled code shows it expects 6 header packets
                             if (dumpState.packets.length >= 6) {
                                 setTimeout(() => requestLogBody(), 500);
                             }
                             return; // Don't log to console to avoid lag
                         }
+                        
+                        // Phase 2: Receiving body packets
                         if (dumpState.phase === 2 && cmd === "44") {
-                            // Body Response
                             dumpState.packets.push(clean);
-                            dumpState.lastRx = Date.now();
                             let count = dumpState.packets.length;
-                            upd(
-                                "dumpStatus",
-                                "Receiving Body: " + count + " packets",
-                            );
-                            document.getElementById(
-                                "dumpProgress",
-                            ).style.width =
+                            upd("dumpStatus", "Receiving Body: " + count + " packets");
+                            document.getElementById("dumpProgress").style.width =
                                 Math.min((count / 100) * 100, 90) + "%"; // Fake progress
                             return;
                         }
                     }
+                    // --- END MODIFIED DUMP LOGIC ---
 
                     log("RX: " + text.trim(), "log-rx");
 
@@ -1084,34 +1084,34 @@
 
             function startLogDump() {
                 dumpState.active = true;
-                dumpState.phase = 1; // Header
+                dumpState.phase = 0; // Phase 0: Inquiry
                 dumpState.packets = [];
                 dumpState.lastRx = Date.now();
 
                 document.getElementById("btnStartDump").style.display = "none";
                 document.getElementById("btnSaveDump").style.display = "none";
                 document.getElementById("dumpPreview").style.display = "block";
-                upd("dumpStatus", "Requesting Headers...");
+                upd("dumpStatus", "Inquiring for unsynced logs...");
 
-                // Packet #41 [BD] 02 00.  Target 0xBF (191).
-                // Cmd 65 = 0x41. Target = 256 - 65 = 191 (BF).
-                // Payload 00 (2 chars). Len 2 (02).
-                // Checksum = BF - 2 = BD.
-                sendStatic("#41bd0200", "Request Headers");
+                // NEW: Send inquiry command first.
+                // Checksum logic from analysis: Target=256-CMD, Checksum=Target-Length.
+                // For CMD 0x40 (64) and LEN 0x02: Target=192 (C0), Checksum=190 (BE)
+                sendStatic("#40be0200", "Inquire Unsynced Logs");
 
-                // Timeout Monitor
                 dumpMonitorLoop();
+            }
+
+            function requestLogHeaders() {
+                if (dumpState.phase > 0) return; // Prevent double-sends
+                dumpState.phase = 1; // Header phase
+                upd("dumpStatus", "Requesting Headers...");
+                sendStatic("#41bd0200", "Request Headers");
             }
 
             function requestLogBody() {
                 if (dumpState.phase !== 1) return;
                 dumpState.phase = 2;
                 upd("dumpStatus", "Header complete. Requesting Body...");
-
-                // Packet #43 [BB] 02 00. Target 0xBD (189).
-                // Cmd 67 = 0x43. Target = 256 - 67 = 189 (BD).
-                // Payload 00. Len 02.
-                // Checksum = BD - 2 = BB.
                 sendStatic("#43bb0200", "Request Body");
             }
 
@@ -1120,6 +1120,13 @@
 
                 // Check for silence timeout (2 seconds)
                 if (Date.now() - dumpState.lastRx > 2000) {
+                    // If we time out in phase 0, it means the device didn't respond to inquiry.
+                    if (dumpState.phase === 0) {
+                        log("Device did not respond to inquiry. Trying legacy header request...", "log-info");
+                        requestLogHeaders();
+                        setTimeout(dumpMonitorLoop, 500); // Restart monitor
+                        return;
+                    }
                     finishDump();
                 } else {
                     setTimeout(dumpMonitorLoop, 500);

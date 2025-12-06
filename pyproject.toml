@@ -1,6 +1,6 @@
 [project]
 authors = [{name = "Bruno Voigt Hoos", email = "voigt.hoos@gmail.com"}]
-dependencies = []
+dependencies = ["matplotlib"]
 name = "cosmiq"
 requires-python = ">= 3.11"
 version = "0.1.0"
