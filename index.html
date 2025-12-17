@@ -1606,12 +1606,16 @@
                     const logNum = readUint16LE(chunk, 0);
                     if (logNum === 0 || logNum === 0xFFFF) continue;
 
+                    // Parse year (device stores full year, not offset)
+                    const yearRaw = readUint16LE(chunk, 6);
+                    const year = yearRaw > 2000 ? yearRaw : yearRaw + 2000;
+
                     const dive = {
                         logNumber: logNum,
                         mode: chunk[2],
                         oxygenPercent: chunk[3],
                         date: {
-                            year: readUint16LE(chunk, 6) + 2000,
+                            year: year,
                             month: (readUint16LE(chunk, 8) >> 8) & 0xFF,
                             day: readUint16LE(chunk, 8) & 0xFF,
                             hour: (readUint16LE(chunk, 10) >> 8) & 0xFF,
@@ -1708,6 +1712,9 @@
 
                 log('Starting dive header scan...', 'log-info');
 
+                let emptyCount = 0;
+                const MAX_EMPTY = 10;  // Stop after 10 consecutive empty responses
+
                 for (let i = 1; i <= MAX_DIVES; i++) {
                     // Update progress
                     const progress = Math.min((i / 50) * 100, 95);  // Assume ~50 dives max for progress
@@ -1724,11 +1731,25 @@
                     // Wait for response (device needs time between requests)
                     await new Promise(r => setTimeout(r, 800));
 
-                    // Check if we got empty response (all 0xFF = no more dives)
+                    // Check if we got empty response (payload is all 0xFF)
                     const lastPacket = dumpState.packets[dumpState.packets.length - 1];
-                    if (lastPacket && lastPacket.includes('FFFFFFFFFF')) {
-                        console.log(`No more dives after #${i - 1}`);
-                        break;
+                    if (lastPacket && lastPacket.startsWith('42')) {
+                        // Extract payload (skip 42[checksum][length])
+                        const payload = lastPacket.substring(6);
+
+                        // Check if payload is all FFs (empty slot)
+                        if (payload.match(/^F+$/)) {
+                            emptyCount++;
+                            console.log(`Dive #${i} is empty (${emptyCount} consecutive empty)`);
+
+                            if (emptyCount >= MAX_EMPTY) {
+                                console.log(`Stopping after ${MAX_EMPTY} consecutive empty responses`);
+                                break;
+                            }
+                        } else {
+                            // Found a dive, reset empty counter
+                            emptyCount = 0;
+                        }
                     }
                 }
 
