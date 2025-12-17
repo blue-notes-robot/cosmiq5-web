@@ -1427,15 +1427,160 @@
             // DIVE HISTORY FEATURE - PHASE 1: DATA ACQUISITION & STORAGE
             // =========================================================================
 
-            // Global storage for dive history data
-            const diveDatabase = {
-                dives: [],           // Array of complete dive objects
-                rawBodyHex: '',      // Cached body hex for re-parsing if needed
-                lastDownload: null   // Timestamp of last download
-            };
+            /**
+             * IndexedDB Storage Wrapper for Dive Data
+             * Stores large binary data in browser database instead of memory
+             */
+            class DiveStorage {
+                constructor() {
+                    this.db = null;
+                    this.dbName = 'cosmiq5_dives';
+                    this.version = 1;
+                }
+
+                /**
+                 * Initialize IndexedDB
+                 */
+                async init() {
+                    return new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, this.version);
+
+                        request.onerror = () => reject(request.error);
+                        request.onsuccess = () => {
+                            this.db = request.result;
+                            resolve();
+                        };
+
+                        request.onupgradeneeded = (event) => {
+                            const db = event.target.result;
+
+                            // Create object stores if they don't exist
+                            if (!db.objectStoreNames.contains('dives')) {
+                                db.createObjectStore('dives', { keyPath: 'logNumber' });
+                            }
+                            if (!db.objectStoreNames.contains('metadata')) {
+                                db.createObjectStore('metadata', { keyPath: 'key' });
+                            }
+                        };
+                    });
+                }
+
+                /**
+                 * Store all dive data (called after download)
+                 */
+                async storeDives(dives, rawBodyHex) {
+                    const tx = this.db.transaction(['dives', 'metadata'], 'readwrite');
+                    const diveStore = tx.objectStore('dives');
+                    const metaStore = tx.objectStore('metadata');
+
+                    // Store each dive
+                    for (const dive of dives) {
+                        await diveStore.put(dive);
+                    }
+
+                    // Store raw body hex
+                    await metaStore.put({ key: 'rawBodyHex', value: rawBodyHex });
+                    await metaStore.put({ key: 'lastDownload', value: Date.now() });
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+
+                /**
+                 * Get all dives (headers only, no samples yet)
+                 */
+                async getDives() {
+                    const tx = this.db.transaction('dives', 'readonly');
+                    const store = tx.objectStore('dives');
+                    const request = store.getAll();
+
+                    return new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+
+                /**
+                 * Get raw body hex (needed for parsing samples)
+                 */
+                async getRawBodyHex() {
+                    const tx = this.db.transaction('metadata', 'readonly');
+                    const store = tx.objectStore('metadata');
+                    const request = store.get('rawBodyHex');
+
+                    return new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result?.value || '');
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+
+                /**
+                 * Get specific dive by log number
+                 */
+                async getDive(logNumber) {
+                    const tx = this.db.transaction('dives', 'readonly');
+                    const store = tx.objectStore('dives');
+                    const request = store.get(logNumber);
+
+                    return new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+
+                /**
+                 * Update a dive (e.g., after parsing samples)
+                 */
+                async updateDive(dive) {
+                    const tx = this.db.transaction('dives', 'readwrite');
+                    const store = tx.objectStore('dives');
+                    await store.put(dive);
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+
+                /**
+                 * Check if we have any dives stored
+                 */
+                async hasDives() {
+                    const dives = await this.getDives();
+                    return dives.length > 0;
+                }
+
+                /**
+                 * Clear all data
+                 */
+                async clear() {
+                    const tx = this.db.transaction(['dives', 'metadata'], 'readwrite');
+                    await tx.objectStore('dives').clear();
+                    await tx.objectStore('metadata').clear();
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+            }
+
+            // Initialize storage
+            const diveStorage = new DiveStorage();
+            diveStorage.init().catch(err => {
+                console.error('Failed to initialize IndexedDB:', err);
+                log('Warning: Could not initialize dive storage', 'log-err');
+            });
 
             // Current dive index being viewed
             let currentDiveIndex = 0;
+
+            // In-memory cache for fast access during session
+            // (avoids IndexedDB round-trips for navigation)
+            let cachedDives = [];
+            let cachedBodyHex = '';
 
             // State for BLE download
             const dumpState = {
@@ -1595,39 +1740,51 @@
              * Processes downloaded hex data and stores it in memory
              * This completes Phase 1 and transitions to Phase 2
              */
-            function processDiveLogs() {
-                document.getElementById('historyLoadingStatus').innerText = 'Processing dive data...';
+            async function processDiveLogs() {
+                try {
+                    document.getElementById('historyLoadingStatus').innerText = 'Processing dive data...';
 
-                // Separate header and body packets from raw BLE stream
-                const headerHex = dumpState.packets
-                    .filter(p => p.startsWith('42'))
-                    .map(p => p.substring(6))  // Strip command/checksum/length
-                    .join('');
+                    // Separate header and body packets from raw BLE stream
+                    const headerHex = dumpState.packets
+                        .filter(p => p.startsWith('42'))
+                        .map(p => p.substring(6))  // Strip command/checksum/length
+                        .join('');
 
-                const bodyHex = dumpState.packets
-                    .filter(p => p.startsWith('44'))
-                    .map(p => p.substring(6))
-                    .join('');
+                    const bodyHex = dumpState.packets
+                        .filter(p => p.startsWith('44'))
+                        .map(p => p.substring(6))
+                        .join('');
 
-                // Parse headers to get dive metadata
-                const headers = parseHeaders(headerHex);
+                    // Parse headers to get dive metadata
+                    const headers = parseHeaders(headerHex);
 
-                // Store in memory for Phase 2 consumption
-                diveDatabase.dives = headers.map(header => ({
-                    header: header,
-                    samples: null  // Lazy-load samples when needed
-                }));
-                diveDatabase.rawBodyHex = bodyHex;
-                diveDatabase.lastDownload = Date.now();
+                    // Create dive objects (without samples yet)
+                    const dives = headers.map(header => ({
+                        logNumber: header.logNumber,  // Used as key in IndexedDB
+                        header: header,
+                        samples: null  // Lazy-load samples when needed
+                    }));
 
-                console.log(`Phase 1 complete: ${diveDatabase.dives.length} dives stored in memory`);
+                    // Store in IndexedDB for persistence across sessions
+                    await diveStorage.storeDives(dives, bodyHex);
 
-                // Hide loading UI
-                document.getElementById('historyLoading').style.display = 'none';
+                    // Cache in memory for fast access during this session
+                    cachedDives = dives;
+                    cachedBodyHex = bodyHex;
 
-                // Transition to Phase 2: Show dive viewer
-                currentDiveIndex = 0;  // Start with first dive
-                showHistoryViewer();
+                    console.log(`Phase 1 complete: ${dives.length} dives stored in IndexedDB and cached`);
+
+                    // Hide loading UI
+                    document.getElementById('historyLoading').style.display = 'none';
+
+                    // Transition to Phase 2: Show dive viewer
+                    currentDiveIndex = 0;  // Start with first dive
+                    showHistoryViewer();
+                } catch (error) {
+                    console.error('Error processing dives:', error);
+                    log('Error processing dives: ' + error.message, 'log-err');
+                    document.getElementById('historyLoadingStatus').innerText = 'Error processing dives';
+                }
             }
 
             // =========================================================================
@@ -1638,10 +1795,8 @@
              * Shows the dive history viewer UI and displays the current dive
              */
             function showHistoryViewer() {
-                const dives = diveDatabase.dives;
-
-                if (dives.length === 0) {
-                    log('No dives found in memory.', 'warn');
+                if (cachedDives.length === 0) {
+                    log('No dives found in cache.', 'warn');
                     return;
                 }
 
@@ -1659,18 +1814,16 @@
              * Updates metadata, navigation state, and renders SVG
              */
             function displayDive(index) {
-                const dives = diveDatabase.dives;
-
                 // Bounds check
-                if (index < 0 || index >= dives.length) return;
+                if (index < 0 || index >= cachedDives.length) return;
 
                 currentDiveIndex = index;
-                const dive = dives[index];
+                const dive = cachedDives[index];
                 const h = dive.header;
 
                 // Update dive counter
                 document.getElementById('diveCounter').innerText =
-                    `Dive ${index + 1} of ${dives.length}`;
+                    `Dive ${index + 1} of ${cachedDives.length}`;
 
                 // Update meta summary
                 const dateStr = `${h.date.year}/${String(h.date.month).padStart(2, '0')}/${String(h.date.day).padStart(2, '0')} ${String(h.date.hour).padStart(2, '0')}:${String(h.date.minute).padStart(2, '0')}`;
@@ -1692,11 +1845,11 @@
 
                 // Update navigation button states
                 document.getElementById('btnPrevDive').disabled = (index === 0);
-                document.getElementById('btnNextDive').disabled = (index === dives.length - 1);
+                document.getElementById('btnNextDive').disabled = (index === cachedDives.length - 1);
 
                 // Lazy-load samples if not already parsed
                 if (!dive.samples) {
-                    dive.samples = parseSamples(diveDatabase.rawBodyHex, dive.header);
+                    dive.samples = parseSamples(cachedBodyHex, dive.header);
                     console.log(`Parsed ${dive.samples.length} samples for dive #${dive.header.logNumber}`);
                 }
 
@@ -1717,7 +1870,7 @@
              * Navigate to next dive
              */
             function nextDive() {
-                if (currentDiveIndex < diveDatabase.dives.length - 1) {
+                if (currentDiveIndex < cachedDives.length - 1) {
                     displayDive(currentDiveIndex + 1);
                 }
             }
@@ -1799,14 +1952,43 @@
 
             /**
              * Called when Dive History tab is opened
-             * Checks if data is cached, otherwise prompts to load
+             * Checks if data is cached, otherwise loads from IndexedDB
              */
-            function onDiveHistoryTabOpened() {
-                if (diveDatabase.dives.length > 0) {
-                    // Data already loaded, show viewer
+            async function onDiveHistoryTabOpened() {
+                // Check in-memory cache first
+                if (cachedDives.length > 0) {
+                    // Data already loaded in this session, show viewer
                     showHistoryViewer();
-                } else {
-                    // No data, show empty state
+                    return;
+                }
+
+                // Check IndexedDB for persisted data
+                try {
+                    const hasDives = await diveStorage.hasDives();
+
+                    if (hasDives) {
+                        // Load from IndexedDB
+                        document.getElementById('historyLoading').style.display = 'block';
+                        document.getElementById('historyLoadingStatus').innerText = 'Loading dive history from storage...';
+
+                        cachedDives = await diveStorage.getDives();
+                        cachedBodyHex = await diveStorage.getRawBodyHex();
+
+                        console.log(`Loaded ${cachedDives.length} dives from IndexedDB`);
+
+                        document.getElementById('historyLoading').style.display = 'none';
+                        showHistoryViewer();
+                    } else {
+                        // No data, show empty state
+                        document.getElementById('historyEmpty').style.display = 'block';
+                        document.getElementById('historyLoading').style.display = 'none';
+                        document.getElementById('historyViewer').style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Error loading dives from storage:', error);
+                    log('Error loading dive history: ' + error.message, 'log-err');
+
+                    // Show empty state on error
                     document.getElementById('historyEmpty').style.display = 'block';
                     document.getElementById('historyLoading').style.display = 'none';
                     document.getElementById('historyViewer').style.display = 'none';
