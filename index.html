@@ -651,6 +651,9 @@
                             <div id="diveCounter" style="font-size: 14px; color: #6c757d; margin-bottom: 5px">
                                 Dive 1 of 1
                             </div>
+                            <div id="divePageIndicator" style="font-size: 11px; color: #adb5bd; margin-bottom: 3px">
+                                Page 1 of 1
+                            </div>
                             <div id="diveMetaSummary" style="font-size: 12px; color: #adb5bd">
                                 Loading...
                             </div>
@@ -1580,23 +1583,51 @@
                 const bytes = hexToBytes(headerHex);
                 const dives = [];
 
-                // Each header is 72 bytes
-                for (let i = 0; i < bytes.length; i += 72) {
-                    if (i + 72 > bytes.length) break;
+                console.log(`Total header bytes: ${bytes.length}, expected headers (36 byte): ${bytes.length / 36}, expected headers (72 byte): ${bytes.length / 72}`);
 
-                    const chunk = bytes.slice(i, i + 72);
+                // Each header is 36 bytes (not 72!)
+                const HEADER_SIZE = 36;
+                for (let i = 0; i < bytes.length; i += HEADER_SIZE) {
+                    if (i + HEADER_SIZE > bytes.length) break;
+
+                    const chunk = bytes.slice(i, i + HEADER_SIZE);
+
+                    // Debug first few headers
+                    if (dives.length < 3) {
+                        console.log(`Header ${dives.length} first 10 bytes:`, chunk.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                    }
 
                     // Skip empty headers
                     const logNum = readUint16LE(chunk, 0);
                     if (logNum === 0 || logNum === 0xFFFF) continue;
 
+                    // Debug: Check if log number might be at different offset
+                    if (dives.length < 3) {
+                        console.log(`  byte[0]: ${chunk[0]}, byte[1]: ${chunk[1]}, byte[0-1] as uint16LE: ${logNum}`);
+                        console.log(`  Trying byte[1] as logNum: ${chunk[1]}`);
+                    }
+
                     // Parse year (device stores full year, not offset)
                     const yearRaw = readUint16LE(chunk, 6);
                     const year = yearRaw > 2000 ? yearRaw : yearRaw + 2000;
 
+                    // Log number is at byte[0] - use uint16LE reading
+                    const actualLogNum = logNum;
+
+                    if (dives.length < 3) {
+                        console.log(`  Using logNum: ${actualLogNum}`);
+                    }
+
+                    // Debug mode value for first few dives
+                    if (dives.length < 3) {
+                        console.log(`  byte[1]: ${chunk[1]}, byte[2]: ${chunk[2]}, byte[3]: ${chunk[3]} (oxygen%)`);
+                        console.log(`  If mode=byte[1]: ${['Scuba', 'Gauge', 'Freedive'][chunk[1]]}`);
+                        console.log(`  If mode=byte[2]: ${['Scuba', 'Gauge', 'Freedive'][chunk[2]]}`);
+                    }
+
                     const dive = {
-                        logNumber: logNum,
-                        mode: chunk[2],
+                        logNumber: actualLogNum,
+                        mode: chunk[1],  // Mode might be at byte[1], not byte[2]
                         oxygenPercent: chunk[3],
                         date: {
                             year: year,
@@ -1939,12 +1970,22 @@
                     // Parse headers to get dive metadata
                     const headers = parseHeaders(headerHex);
 
+                    // Debug: Check log numbers
+                    console.log('Parsed dive log numbers:', headers.map(h => h.logNumber));
+
                     // Create dive objects (without samples)
                     const dives = headers.map(header => ({
                         logNumber: header.logNumber,
                         header: header,
                         samples: null
                     }));
+
+                    // Sort dives by date (descending, most recent first)
+                    dives.sort((a, b) => {
+                        const dateA = new Date(a.header.date.year, a.header.date.month - 1, a.header.date.day, a.header.date.hour, a.header.date.minute);
+                        const dateB = new Date(b.header.date.year, b.header.date.month - 1, b.header.date.day, b.header.date.hour, b.header.date.minute);
+                        return dateB - dateA; // Most recent first
+                    });
 
                     // Store in IndexedDB and cache in memory
                     await diveStorage.storeDives(dives);
@@ -2081,9 +2122,13 @@
                 const dive = cachedDives[index];
                 const h = dive.header;
 
-                // Update dive counter (show log number and position)
+                // Update dive counter (show log number and total count)
                 document.getElementById('diveCounter').innerText =
-                    `Dive #${dive.logNumber} (${index + 1} of ${cachedDives.length})`;
+                    `Dive #${dive.logNumber} • ${cachedDives.length} dives total`;
+
+                // Update page indicator
+                document.getElementById('divePageIndicator').innerText =
+                    `Page ${index + 1} of ${cachedDives.length}`;
 
                 // Update meta summary
                 const dateStr = `${h.date.year}/${String(h.date.month).padStart(2, '0')}/${String(h.date.day).padStart(2, '0')} ${String(h.date.hour).padStart(2, '0')}:${String(h.date.minute).padStart(2, '0')}`;
@@ -2263,6 +2308,13 @@
                         document.getElementById('historyLoadingStatus').innerText = 'Loading dive history...';
 
                         cachedDives = await diveStorage.getDives();
+
+                        // Sort dives by date (descending, most recent first)
+                        cachedDives.sort((a, b) => {
+                            const dateA = new Date(a.header.date.year, a.header.date.month - 1, a.header.date.day, a.header.date.hour, a.header.date.minute);
+                            const dateB = new Date(b.header.date.year, b.header.date.month - 1, b.header.date.day, b.header.date.hour, b.header.date.minute);
+                            return dateB - dateA; // Most recent first
+                        });
 
                         console.log(`Loaded ${cachedDives.length} dives from IndexedDB`);
 
