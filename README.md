@@ -41,17 +41,6 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
   * Navigate through all dives with Previous/Next buttons
 * **Diagnostics:** A "Byte Hunter" tab allows you to see the raw data packets coming from the device.
 
-### **4\. Using Dive History**
-
-1. Navigate to the **Dive History** tab after connecting to your device.
-2. Click **"Scan Dive Headers"** to quickly load the list of all dives (shows date, max depth, duration).
-3. Browse through your dives using the **Previous/Next** buttons.
-4. For any dive, click **"Download Dive Profile"** to fetch the detailed depth/time data.
-5. View the interactive chart showing your depth profile over time.
-6. Use **"↻ Reload Dive Profile"** if you need to re-fetch the data.
-
-**Note:** Dive data is stored locally in your browser, so it persists across sessions. Dives are automatically sorted by date (most recent first).
-
 ## **⚠️ Important Safety Warning**
 
 **This software is UNOFFICIAL and experimental.**
@@ -63,11 +52,3 @@ Diving involves significant risks, including decompression sickness, oxygen toxi
 3. The authors and the AI assistant accept **NO RESPONSIBILITY** for malfunctions, incorrect settings, or any safety incidents resulting from the use of this tool.
 
 *Dive safe. Always carry a backup.*
-
-## **📝 Recent Updates**
-
-### December 2024 \- Dive History
-* Full dive log viewing and download functionality.
-* Interactive depth/time charts for each dive.
-* Smart on-demand loading to prevent browser crashes.
-* Local storage for persistent dive history.
