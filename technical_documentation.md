@@ -54,8 +54,92 @@ Configuration is read by sending query commands. The device responds with packet
 
 *Note: Offsets above refer to the payload bytes (after the 6-character header).*
 
+## **4\. Dive Log Commands**
+
+The device stores dive logs with headers (metadata) and body data (depth samples) that can be retrieved individually.
+
+### **Dive Header Request (CMD 0x42)**
+
+Request a specific dive header:
+
+```
+#42 [CHECKSUM] 02 [DIVE_NUMBER]
+```
+
+**Target Checksum:** 189 (0xBD)
+**Formula:** `checksum = (189 - (2 + diveNumber)) & 0xFF`
+**Example:** Request dive #1: `#42BC0201`
+
+**Response Format:** `$42` followed by 36 bytes of dive metadata.
+
+#### **Header Structure (36 bytes)**
+
+| Offset | Size | Field | Format |
+|:-------|:-----|:------|:-------|
+| 0 | 1 | Log Number | Single byte (1-255) |
+| 1 | 1 | Mode | 0=Scuba, 1=Gauge, 2=Freedive |
+| 2 | 1 | *(Reserved)* | |
+| 3 | 1 | Oxygen % | Decimal value (e.g., 21 for air) |
+| 4-5 | 2 | *(Reserved)* | |
+| 6-7 | 2 | Year | Little-endian (e.g., 0xE407 = 2020) |
+| 8 | 1 | Day | 1-31 |
+| 9 | 1 | Month | 1-12 |
+| 10 | 1 | Hour | 0-23 |
+| 11 | 1 | Minute | 0-59 |
+| 12-13 | 2 | Max Depth | Centimeters (little-endian) |
+| 14-15 | 2 | *(Reserved)* | |
+| 16-17 | 2 | Duration | Seconds (little-endian) |
+| 18-19 | 2 | Min Temp | Celsius × 10 (little-endian) |
+| 20-21 | 2 | Start Sector | Body data location |
+| 22-23 | 2 | End Sector | Body data location |
+| 24-25 | 2 | Log Length | Body data size in bytes |
+| 26-27 | 2 | Log Period | Sample interval in seconds |
+| 28-35 | 8 | *(Reserved)* | |
+
+### **Dive Body Request (CMD 0x43)**
+
+Request dive profile (depth samples):
+
+```
+#43 [CHECKSUM] 02 [DIVE_NUMBER]
+```
+
+**Target Checksum:** 189 (0xBD)
+**Formula:** Same as header request
+**Example:** Request dive #1 body: `#43BB0201`
+
+**Note:** Protocol may return all dive body data regardless of requested dive number. Body data is large (can be several KB per dive).
+
+#### **Body Data Structure**
+
+Body data consists of 4-byte depth samples:
+
+```
+[Marker_Low] [Marker_High] [Depth_Low] [Depth_High]
+```
+
+* **Marker:** 16-bit little-endian counter/marker (purpose unclear, varies per sample)
+* **Depth:** 16-bit little-endian value in centimeters
+* **Skip patterns:** `0x0C44`, `0x0C70` appear as padding between packets
+
+**Example Sample:**
+```
+70 00 C7 05  →  Marker: 0x0070, Depth: 0x05C7 = 1479cm = 14.79m
+```
+
+### **Scanning All Dives**
+
+To retrieve all dive logs:
+1. Request headers sequentially: dive #1, #2, #3, etc.
+2. Stop when receiving empty response (all 0xFF bytes)
+3. Parse 36-byte headers to build dive list
+4. Download body data on-demand for specific dives
+
 ## **5\. Quirks & Anomalies**
 
-* **Split Freedive Data:** Freedive Alarms are split across packets $5D (Alarms 1-2) and $60 (Alarms 3-6).  
-* **Byte Order:** In Freedive Alarm packets (both Read and Write), the **Even** numbered alarm always occupies the first byte, and the **Odd** numbered alarm occupies the second byte.  
+* **Split Freedive Data:** Freedive Alarms are split across packets $5D (Alarms 1-2) and $60 (Alarms 3-6).
+* **Byte Order:** In Freedive Alarm packets (both Read and Write), the **Even** numbered alarm always occupies the first byte, and the **Odd** numbered alarm occupies the second byte.
 * **PPO2 Location:** PPO2 is stored in the Freedive packet $5D, confusingly mixed with depth alarms and safety settings.
+* **Header Size:** Each dive header is exactly 36 bytes, not 72 as might be assumed from BLE packet fragmentation.
+* **Body Data Size:** Body data can be large (multiple KB per dive). Requesting all body data at once may cause browser memory issues.
+* **Date/Time Format:** Unlike settings which use BCD format, dive log timestamps use standard binary integers.

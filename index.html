@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v68 (Time Sync Added)</title>
+        <title>Cosmiq 5 Manager v69</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -282,6 +282,33 @@
                 background: var(--blue);
                 color: white;
             }
+
+            /* Dive History Navigation Buttons */
+            .btn-nav {
+                padding: 10px 20px;
+                background: white;
+                border: 2px solid var(--blue);
+                color: var(--blue);
+                border-radius: 8px;
+                font-weight: 600;
+                cursor: pointer;
+                transition: all 0.2s;
+                font-family: inherit;
+            }
+            .btn-nav:hover {
+                background: var(--blue);
+                color: white;
+            }
+            .btn-nav:disabled {
+                opacity: 0.3;
+                cursor: not-allowed;
+                border-color: #ccc;
+                color: #ccc;
+            }
+            .btn-nav:disabled:hover {
+                background: white;
+                color: #ccc;
+            }
         </style>
     </head>
     <body>
@@ -307,6 +334,7 @@
                 <button class="tab" onclick="tab('env')">Environment</button>
                 <button class="tab" onclick="tab('scuba')">Scuba</button>
                 <button class="tab" onclick="tab('free')">Freedive</button>
+                <button class="tab" onclick="tab('history')">Dive History</button>
                 <button class="tab" onclick="tab('hunter')">Diagnostics</button>
             </div>
 
@@ -592,6 +620,84 @@
                 </div>
             </div>
 
+            <!-- Dive History Section -->
+            <div id="history" class="section">
+                <!-- Loading state (shown during download) -->
+                <div id="historyLoading" style="display: none; text-align: center; padding: 40px">
+                    <p id="historyLoadingStatus">Loading dive history...</p>
+                    <div style="width: 100%; max-width: 400px; margin: 20px auto; background: #ddd; height: 20px; border-radius: 10px">
+                        <div id="historyLoadingBar" style="width: 0%; background: var(--blue); height: 100%; border-radius: 10px; transition: width 0.3s"></div>
+                    </div>
+                </div>
+
+                <!-- Empty state (no dives in memory) -->
+                <div id="historyEmpty" class="card" style="text-align: center">
+                    <h3>No Dive History</h3>
+                    <p>Click the button below to download your dive logs from the device.</p>
+                    <button class="btn-main" onclick="loadDiveHistory()">
+                        Load Dive History
+                    </button>
+                </div>
+
+                <!-- Dive viewer (shown when dives are loaded) -->
+                <div id="historyViewer" style="display: none">
+                    <!-- Navigation header -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px">
+                        <button class="btn-nav" onclick="previousDive()" id="btnPrevDive">
+                            ← Previous
+                        </button>
+
+                        <div style="text-align: center">
+                            <div id="diveCounter" style="font-size: 14px; color: #6c757d; margin-bottom: 5px">
+                                Dive 1 of 1
+                            </div>
+                            <div id="divePageIndicator" style="font-size: 11px; color: #adb5bd; margin-bottom: 3px">
+                                Page 1 of 1
+                            </div>
+                            <div id="diveMetaSummary" style="font-size: 12px; color: #adb5bd">
+                                Loading...
+                            </div>
+                        </div>
+
+                        <button class="btn-nav" onclick="nextDive()" id="btnNextDive">
+                            Next →
+                        </button>
+                    </div>
+
+                    <!-- Dive metadata card -->
+                    <div class="card" id="diveMetadataCard">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 14px">
+                            <div>
+                                <strong>Date:</strong> <span id="diveDateDisplay">--</span>
+                            </div>
+                            <div>
+                                <strong>Mode:</strong> <span id="diveModeDisplay">--</span>
+                            </div>
+                            <div>
+                                <strong>Max Depth:</strong> <span id="diveMaxDepthDisplay">--</span>
+                            </div>
+                            <div>
+                                <strong>Duration:</strong> <span id="diveDurationDisplay">--</span>
+                            </div>
+                            <div>
+                                <strong>Min Temp:</strong> <span id="diveMinTempDisplay">--</span>
+                            </div>
+                            <div>
+                                <strong>O₂ Mix:</strong> <span id="diveO2Display">--</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SVG dive profile graph -->
+                    <div class="card">
+                        <div id="diveGraphContainer"></div>
+                    </div>
+                </div>
+
+                <!-- Tooltip for interactive hover (optional) -->
+                <div id="diveTooltip" style="display: none; position: absolute; background: #333; color: white; padding: 5px 10px; border-radius: 5px; font-size: 12px; pointer-events: none; z-index: 1000"></div>
+            </div>
+
             <div id="hunter" class="section">
                 <div class="card">
                     <h3>Byte Hunter</h3>
@@ -664,6 +770,11 @@
                     .forEach((e) => e.classList.remove("active"));
                 document.getElementById(id).classList.add("active");
                 event.target.classList.add("active");
+
+                // Special handling for Dive History tab
+                if (id === 'history') {
+                    onDiveHistoryTabOpened();
+                }
             }
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
@@ -753,6 +864,16 @@
 
                     if (clean.length < 4) return;
                     let cmd = clean.substr(0, 2);
+
+                    // Handle Dive Log packets (Phase 1)
+                    if (dumpState.active) {
+                        if (cmd === '42' || cmd === '44') {
+                            // Collect dive log packets
+                            dumpState.packets.push(clean);
+                            // Don't auto-finish - let loadDiveHistory/downloadBodyData control flow
+                            return; // Don't process dive log packets normally
+                        }
+                    }
 
                     memMap[cmd] = clean;
                     updateHunter();
@@ -1271,6 +1392,951 @@
                     setTimeout(async () => {
                         await sendStatic(cmd, "Verify");
                     }, 600);
+            }
+
+            // =========================================================================
+            // DIVE HISTORY
+            // =========================================================================
+
+            /**
+             * IndexedDB Storage Wrapper for Dive Data
+             * Stores large binary data in browser database instead of memory
+             */
+            class DiveStorage {
+                constructor() {
+                    this.db = null;
+                    this.dbName = 'cosmiq5_dives';
+                    this.version = 1;
+                }
+
+                /**
+                 * Initialize IndexedDB
+                 */
+                async init() {
+                    return new Promise((resolve, reject) => {
+                        const request = indexedDB.open(this.dbName, this.version);
+
+                        request.onerror = () => reject(request.error);
+                        request.onsuccess = () => {
+                            this.db = request.result;
+                            resolve();
+                        };
+
+                        request.onupgradeneeded = (event) => {
+                            const db = event.target.result;
+
+                            // Create object stores if they don't exist
+                            if (!db.objectStoreNames.contains('dives')) {
+                                db.createObjectStore('dives', { keyPath: 'logNumber' });
+                            }
+                            if (!db.objectStoreNames.contains('metadata')) {
+                                db.createObjectStore('metadata', { keyPath: 'key' });
+                            }
+                        };
+                    });
+                }
+
+                /**
+                 * Store all dive data (called after download)
+                 */
+                async storeDives(dives) {
+                    const tx = this.db.transaction(['dives', 'metadata'], 'readwrite');
+                    const diveStore = tx.objectStore('dives');
+                    const metaStore = tx.objectStore('metadata');
+
+                    // Store each dive
+                    for (const dive of dives) {
+                        await diveStore.put(dive);
+                    }
+
+                    // Store timestamp
+                    await metaStore.put({ key: 'lastDownload', value: Date.now() });
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+
+                /**
+                 * Get all dives (includes samples if previously downloaded)
+                 */
+                async getDives() {
+                    const tx = this.db.transaction('dives', 'readonly');
+                    const store = tx.objectStore('dives');
+                    const request = store.getAll();
+
+                    return new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+
+                /**
+                 * Get specific dive by log number
+                 */
+                async getDive(logNumber) {
+                    const tx = this.db.transaction('dives', 'readonly');
+                    const store = tx.objectStore('dives');
+                    const request = store.get(logNumber);
+
+                    return new Promise((resolve, reject) => {
+                        request.onsuccess = () => resolve(request.result);
+                        request.onerror = () => reject(request.error);
+                    });
+                }
+
+                /**
+                 * Update a dive (e.g., after parsing samples)
+                 */
+                async updateDive(dive) {
+                    const tx = this.db.transaction('dives', 'readwrite');
+                    const store = tx.objectStore('dives');
+                    await store.put(dive);
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+
+                /**
+                 * Check if we have any dives stored
+                 */
+                async hasDives() {
+                    const dives = await this.getDives();
+                    return dives.length > 0;
+                }
+
+                /**
+                 * Clear all data
+                 */
+                async clear() {
+                    const tx = this.db.transaction(['dives', 'metadata'], 'readwrite');
+                    await tx.objectStore('dives').clear();
+                    await tx.objectStore('metadata').clear();
+
+                    return new Promise((resolve, reject) => {
+                        tx.oncomplete = () => resolve();
+                        tx.onerror = () => reject(tx.error);
+                    });
+                }
+            }
+
+            // Initialize storage
+            const diveStorage = new DiveStorage();
+            diveStorage.init().catch(err => {
+                console.error('Failed to initialize IndexedDB:', err);
+                log('Warning: Could not initialize dive storage', 'log-err');
+            });
+
+            // Current dive index being viewed
+            let currentDiveIndex = 0;
+
+            // In-memory cache for fast access during session
+            // (avoids IndexedDB round-trips for navigation)
+            let cachedDives = [];
+
+            // State for BLE download
+            const dumpState = {
+                active: false,
+                phase: 0,           // 0=header-only, 1=body-downloading
+                packets: [],        // Collected hex strings
+                headerOnly: false   // If true, only downloading headers
+            };
+
+            // =========================================================================
+            // BINARY PARSER FUNCTIONS
+            // =========================================================================
+
+            /**
+             * Convert hex string to byte array
+             */
+            function hexToBytes(hexString) {
+                const bytes = [];
+                for (let i = 0; i < hexString.length; i += 2) {
+                    bytes.push(parseInt(hexString.substr(i, 2), 16));
+                }
+                return bytes;
+            }
+
+            /**
+             * Read little-endian unsigned 16-bit integer from byte array
+             */
+            function readUint16LE(bytes, offset) {
+                return bytes[offset] | (bytes[offset + 1] << 8);
+            }
+
+            /**
+             * Read little-endian signed 16-bit integer from byte array
+             */
+            function readInt16LE(bytes, offset) {
+                const val = readUint16LE(bytes, offset);
+                return val > 32767 ? val - 65536 : val;
+            }
+
+            /**
+             * Parse dive headers from concatenated hex string
+             * Returns array of dive header objects
+             */
+            function parseHeaders(headerHex) {
+                const bytes = hexToBytes(headerHex);
+                const dives = [];
+
+                console.log(`Total header bytes: ${bytes.length}, expected headers (36 byte): ${bytes.length / 36}, expected headers (72 byte): ${bytes.length / 72}`);
+
+                // Each header is 36 bytes (not 72!)
+                const HEADER_SIZE = 36;
+                for (let i = 0; i < bytes.length; i += HEADER_SIZE) {
+                    if (i + HEADER_SIZE > bytes.length) break;
+
+                    const chunk = bytes.slice(i, i + HEADER_SIZE);
+
+                    // Debug first few headers
+                    if (dives.length < 3) {
+                        console.log(`Header ${dives.length} first 10 bytes:`, chunk.slice(0, 10).map(b => '0x' + b.toString(16).padStart(2, '0')).join(' '));
+                    }
+
+                    // Skip empty headers
+                    const logNum = readUint16LE(chunk, 0);
+                    if (logNum === 0 || logNum === 0xFFFF) continue;
+
+                    // Debug: Check if log number might be at different offset
+                    if (dives.length < 3) {
+                        console.log(`  byte[0]: ${chunk[0]}, byte[1]: ${chunk[1]}, byte[0-1] as uint16LE: ${logNum}`);
+                        console.log(`  Trying byte[1] as logNum: ${chunk[1]}`);
+                    }
+
+                    // Parse year (device stores full year, not offset)
+                    const yearRaw = readUint16LE(chunk, 6);
+                    const year = yearRaw > 2000 ? yearRaw : yearRaw + 2000;
+
+                    // Log number is at byte[0] - use uint16LE reading
+                    const actualLogNum = logNum;
+
+                    if (dives.length < 3) {
+                        console.log(`  Using logNum: ${actualLogNum}`);
+                    }
+
+                    // Debug mode value for first few dives
+                    if (dives.length < 3) {
+                        console.log(`  byte[1]: ${chunk[1]}, byte[2]: ${chunk[2]}, byte[3]: ${chunk[3]} (oxygen%)`);
+                        console.log(`  If mode=byte[1]: ${['Scuba', 'Gauge', 'Freedive'][chunk[1]]}`);
+                        console.log(`  If mode=byte[2]: ${['Scuba', 'Gauge', 'Freedive'][chunk[2]]}`);
+                    }
+
+                    const dive = {
+                        logNumber: actualLogNum,
+                        mode: chunk[1],  // Mode might be at byte[1], not byte[2]
+                        oxygenPercent: chunk[3],
+                        date: {
+                            year: year,
+                            month: (readUint16LE(chunk, 8) >> 8) & 0xFF,
+                            day: readUint16LE(chunk, 8) & 0xFF,
+                            hour: (readUint16LE(chunk, 10) >> 8) & 0xFF,
+                            minute: readUint16LE(chunk, 10) & 0xFF
+                        },
+                        durationMinutes: readUint16LE(chunk, 12),
+                        maxDepthMeters: readUint16LE(chunk, 22) / 100.0,
+                        minTempCelsius: readInt16LE(chunk, 24) / 10.0,
+                        logPeriod: chunk[28],
+                        logLength: readUint16LE(chunk, 28),
+                        startSector: readUint16LE(chunk, 30),
+                        endSector: readUint16LE(chunk, 32)
+                    };
+
+                    dives.push(dive);
+                }
+
+                return dives;
+            }
+
+            /**
+             * Parse dive samples from body hex for a specific dive
+             * Returns array of depth/time sample objects
+             * Handles both full body hex (all dives) and individual dive body hex
+             */
+            function parseSamples(bodyHex, header, isIndividualDive = false) {
+                const bytes = hexToBytes(bodyHex);
+                const SECTOR_SIZE = 4096;
+
+                let diveData;
+
+                if (isIndividualDive) {
+                    // Individual dive download - data starts at beginning
+                    diveData = bytes.slice(0, header.logLength);
+                } else {
+                    // Full body download - calculate offset from sector numbers
+                    const startOffset = (header.startSector - 12) * SECTOR_SIZE;
+                    diveData = bytes.slice(startOffset, startOffset + header.logLength);
+                }
+
+                const samples = [];
+                const validMarkers = [
+                    0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
+                    0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+                    0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7,
+                    0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
+                ];
+
+                let i = 0;
+                let sampleIndex = 0;
+
+                // Parse 4-byte samples: [Marker] [0x00] [Depth_Low] [Depth_High]
+                while (i < diveData.length - 4) {
+                    const marker = diveData[i];
+
+                    if (diveData[i + 1] === 0x00 && validMarkers.includes(marker)) {
+                        const depthRaw = readUint16LE(diveData, i + 2);
+
+                        // Sanity check: max dive computer depth ~200m
+                        if (depthRaw > 0 && depthRaw < 20000) {
+                            samples.push({
+                                timeSeconds: sampleIndex * header.logPeriod,
+                                depthMeters: depthRaw / 100.0,
+                                marker: marker
+                            });
+                            sampleIndex++;
+                        }
+
+                        i += 4;  // Move to next sample
+                    } else {
+                        i += 1;  // Scan forward
+                    }
+                }
+
+                return samples;
+            }
+
+            /**
+             * Parse dive samples from body hex assuming data is direct (no sector offset)
+             * Alternative parsing when standard method finds no samples
+             * Tries multiple parsing strategies
+             */
+            function parseDirectSamples(bodyHex, header) {
+                const bytes = hexToBytes(bodyHex);
+                const samples = [];
+
+                console.log('Direct parse: total bytes:', bytes.length);
+                console.log('First 40 bytes:', bytes.slice(0, 40).map(b => b.toString(16).padStart(2, '0')).join(' '));
+                console.log('Expected samples based on logLength:', header.logLength / 4);
+
+                // Try parsing as 4-byte samples: [Marker_Low] [Marker_High] [Depth_Low] [Depth_High]
+                // This format is used when downloading individual dives
+                console.log('Trying 4-byte sample format (marker + depth)...');
+                let sampleIndex = 0;
+                let skipCount = 0;
+
+                for (let i = 0; i < bytes.length - 3; i += 4) {
+                    const marker = readUint16LE(bytes, i);
+                    const depthRaw = readUint16LE(bytes, i + 2);
+
+                    // Skip invalid markers and padding
+                    if (marker === 0x0C44 || marker === 0x0C70 || depthRaw === 0 || depthRaw === 0xFFFF) {
+                        skipCount++;
+                        continue;
+                    }
+
+                    // Sanity check: reasonable dive depth (0.1m to 200m)
+                    if (depthRaw > 10 && depthRaw < 20000) {
+                        const depthMeters = depthRaw / 100.0;
+
+                        samples.push({
+                            timeSeconds: sampleIndex * (header.logPeriod || 10),
+                            depthMeters: depthMeters,
+                            marker: marker
+                        });
+
+                        // Log first few samples for debugging
+                        if (sampleIndex < 5) {
+                            console.log(`Sample ${sampleIndex}: offset=${i}, marker=0x${marker.toString(16).padStart(4, '0')}, depth_raw=0x${depthRaw.toString(16).padStart(4, '0')} (${depthRaw}), depth=${depthMeters.toFixed(2)}m`);
+                        }
+
+                        sampleIndex++;
+                    }
+                }
+
+                console.log(`Skipped ${skipCount} invalid/padding entries`);
+
+                console.log(`4-byte format parsing found ${samples.length} samples`);
+
+                // If we found reasonable number of samples, return them
+                if (samples.length > 10) {
+                    console.log('Sample depth range:', {
+                        min: Math.min(...samples.map(s => s.depthMeters)).toFixed(2) + 'm',
+                        max: Math.max(...samples.map(s => s.depthMeters)).toFixed(2) + 'm',
+                        avg: (samples.reduce((sum, s) => sum + s.depthMeters, 0) / samples.length).toFixed(2) + 'm'
+                    });
+                    return samples;
+                }
+
+                // Fallback: try 4-byte marker format
+                console.log('Trying 4-byte marker format...');
+                const validMarkers = [
+                    0xC0, 0xC1, 0xC2, 0xC3, 0xC4, 0xC5, 0xC6, 0xC7,
+                    0xC8, 0xC9, 0xCA, 0xCB, 0xCC, 0xCD, 0xCE, 0xCF,
+                    0xB0, 0xB1, 0xB2, 0xB3, 0xB4, 0xB5, 0xB6, 0xB7,
+                    0xB8, 0xB9, 0xBA, 0xBB, 0xBC, 0xBD, 0xBE, 0xBF
+                ];
+
+                samples.length = 0; // Clear
+                sampleIndex = 0;
+
+                for (let i = 0; i < bytes.length - 3; i++) {
+                    const marker = bytes[i];
+
+                    if (validMarkers.includes(marker)) {
+                        const depthRaw = readUint16LE(bytes, i + 2);
+
+                        if (depthRaw > 10 && depthRaw < 20000) {
+                            samples.push({
+                                timeSeconds: sampleIndex * (header.logPeriod || 10),
+                                depthMeters: depthRaw / 100.0,
+                                marker: marker
+                            });
+                            sampleIndex++;
+                            i += 3; // Skip ahead
+                        }
+                    }
+                }
+
+                console.log(`4-byte marker parsing found ${samples.length} samples`);
+                return samples;
+            }
+
+            // =========================================================================
+            // BLE DOWNLOAD & PROCESSING
+            // =========================================================================
+
+            /**
+             * Initiates BLE download of dive headers only (sequential requests)
+             * Body data downloaded on-demand when viewing profiles
+             */
+            async function loadDiveHistory() {
+                // Hide empty state, show loading
+                document.getElementById('historyEmpty').style.display = 'none';
+                document.getElementById('historyLoading').style.display = 'block';
+                document.getElementById('historyLoadingStatus').innerText = 'Scanning for dives...';
+
+                // Clear state
+                dumpState.active = true;
+                dumpState.phase = 0;
+                dumpState.packets = [];
+                dumpState.headerOnly = true;
+
+                // Request headers sequentially (device requires individual requests)
+                const MAX_DIVES = 200;  // Upper limit to prevent infinite loop
+                const TARGET = 191;     // Target constant for command 0x41
+                const LEN = 2;
+
+                log('Starting dive header scan...', 'log-info');
+
+                let emptyCount = 0;
+                const MAX_EMPTY = 10;  // Stop after 10 consecutive empty responses
+
+                for (let i = 1; i <= MAX_DIVES; i++) {
+                    // Update progress
+                    const progress = Math.min((i / 50) * 100, 95);  // Assume ~50 dives max for progress
+                    document.getElementById('historyLoadingBar').style.width = progress + '%';
+                    document.getElementById('historyLoadingStatus').innerText = `Scanning dive #${i}...`;
+
+                    // Calculate checksum for this dive number
+                    const payload = i;
+                    const checksum = (TARGET - (LEN + payload)) & 0xFF;
+                    const cmd = "#41" + checksum.toString(16).padStart(2, '0') + "02" + payload.toString(16).padStart(2, '0');
+
+                    await sendStatic(cmd, `Request Header #${i}`);
+
+                    // Wait for response (device needs time between requests)
+                    await new Promise(r => setTimeout(r, 800));
+
+                    // Check if we got empty response (payload is all 0xFF)
+                    const lastPacket = dumpState.packets[dumpState.packets.length - 1];
+                    if (lastPacket && lastPacket.startsWith('42')) {
+                        // Extract payload (skip 42[checksum][length])
+                        const payload = lastPacket.substring(6);
+
+                        // Check if payload is all FFs (empty slot)
+                        if (payload.match(/^F+$/)) {
+                            emptyCount++;
+                            console.log(`Dive #${i} is empty (${emptyCount} consecutive empty)`);
+
+                            if (emptyCount >= MAX_EMPTY) {
+                                console.log(`Stopping after ${MAX_EMPTY} consecutive empty responses`);
+                                break;
+                            }
+                        } else {
+                            // Found a dive, reset empty counter
+                            emptyCount = 0;
+                        }
+                    }
+                }
+
+                // Finish processing
+                document.getElementById('historyLoadingBar').style.width = '100%';
+                document.getElementById('historyLoadingStatus').innerText = 'Processing dive list...';
+
+                dumpState.active = false;
+                await processHeadersOnly();
+            }
+
+            /**
+             * Rescans/reloads the current dive profile
+             * Clears existing samples and re-downloads from device
+             */
+            async function rescanCurrentDiveProfile() {
+                // Clear current dive's samples
+                const currentDive = cachedDives[currentDiveIndex];
+                currentDive.samples = null;
+
+                // Update in IndexedDB
+                await diveStorage.updateDive(currentDive);
+
+                // Refresh display (will show download button)
+                displayDive(currentDiveIndex);
+
+                // Auto-download after brief delay
+                setTimeout(() => {
+                    downloadCurrentDiveProfile();
+                }, 100);
+            }
+
+            /**
+             * Downloads dive body data
+             * Note: Protocol requests specific dive but device returns all body data
+             * We extract the current dive's profile from the full body data
+             */
+            async function downloadCurrentDiveProfile() {
+                document.getElementById('historyLoadingStatus').innerText = 'Downloading dive profiles...';
+                document.getElementById('historyLoading').style.display = 'block';
+                document.getElementById('historyLoadingBar').style.width = '0%';
+
+                // Clear and prepare for body download
+                dumpState.active = true;
+                dumpState.phase = 1;
+                const previousPackets = dumpState.packets.filter(p => p.startsWith('42')); // Keep headers
+                dumpState.packets = [];
+                dumpState.headerOnly = false;
+
+                // Get current dive's log number
+                const currentDive = cachedDives[currentDiveIndex];
+                const diveNumber = currentDive.logNumber;
+
+                // Request body data (device protocol returns all dive bodies)
+                // Using specific dive number in request for protocol compliance
+                const TARGET = 189;
+                const LEN = 2;
+                const payload = diveNumber;
+                const checksum = (TARGET - (LEN + payload)) & 0xFF;
+                const cmd = "#43" + checksum.toString(16).padStart(2, '0') + "02" + payload.toString(16).padStart(2, '0');
+
+                log(`Requesting dive body data (dive #${diveNumber})...`, 'log-info');
+                await sendStatic(cmd, `Request Dive Body Data`);
+
+                // Animate progress bar while waiting
+                let progress = 10;
+                const progressInterval = setInterval(() => {
+                    progress += 15;
+                    if (progress < 90) {
+                        document.getElementById('historyLoadingBar').style.width = progress + '%';
+                    }
+                }, 300);
+
+                // Wait for download to complete
+                setTimeout(() => {
+                    clearInterval(progressInterval);
+                    if (dumpState.active) {
+                        dumpState.active = false;
+                        document.getElementById('historyLoadingBar').style.width = '100%';
+                        dumpState.packets = [...previousPackets, ...dumpState.packets]; // Restore headers
+                        processCurrentDiveProfile();
+                    }
+                }, 2000);
+            }
+
+            /**
+             * Processes header-only download (fast, shows dive list without profiles)
+             */
+            async function processHeadersOnly() {
+                try {
+                    document.getElementById('historyLoadingStatus').innerText = 'Processing dive list...';
+
+                    // Extract header packets only
+                    const headerHex = dumpState.packets
+                        .filter(p => p.startsWith('42'))
+                        .map(p => p.substring(6))  // Strip command/checksum/length
+                        .join('');
+
+                    // Parse headers to get dive metadata
+                    const headers = parseHeaders(headerHex);
+
+                    // Debug: Check log numbers
+                    console.log('Parsed dive log numbers:', headers.map(h => h.logNumber));
+
+                    // Create dive objects (without samples)
+                    const dives = headers.map(header => ({
+                        logNumber: header.logNumber,
+                        header: header,
+                        samples: null
+                    }));
+
+                    // Sort dives by date (descending, most recent first)
+                    dives.sort((a, b) => {
+                        const dateA = new Date(a.header.date.year, a.header.date.month - 1, a.header.date.day, a.header.date.hour, a.header.date.minute);
+                        const dateB = new Date(b.header.date.year, b.header.date.month - 1, b.header.date.day, b.header.date.hour, b.header.date.minute);
+                        return dateB - dateA; // Most recent first
+                    });
+
+                    // Store in IndexedDB and cache in memory
+                    await diveStorage.storeDives(dives);
+                    cachedDives = dives;
+
+                    console.log(`Headers processed: ${dives.length} dives found`);
+
+                    // Hide loading UI
+                    document.getElementById('historyLoading').style.display = 'none';
+
+                    // Show dive list with prompt to download profiles
+                    showDiveListOnly();
+
+                } catch (error) {
+                    console.error('Error processing headers:', error);
+                    log('Error processing dive list: ' + error.message, 'log-err');
+                    document.getElementById('historyLoadingStatus').innerText = 'Error processing dive list';
+                }
+            }
+
+            /**
+             * Processes dive body data (device returns all dive bodies)
+             */
+            async function processCurrentDiveProfile() {
+                try {
+                    document.getElementById('historyLoadingStatus').innerText = 'Processing dive profile...';
+
+                    // Extract body packets
+                    const bodyHex = dumpState.packets
+                        .filter(p => p.startsWith('44'))
+                        .map(p => p.substring(6))
+                        .join('');
+
+                    if (!bodyHex) {
+                        throw new Error('No body data received');
+                    }
+
+                    console.log(`Received ${bodyHex.length} hex chars of body data`);
+
+                    // Parse samples for current dive using sector offsets
+                    // Note: Device returns ALL dive bodies, not just requested dive
+                    const currentDive = cachedDives[currentDiveIndex];
+
+                    console.log('Current dive index:', currentDiveIndex);
+                    console.log('Current dive:', currentDive);
+                    console.log('Current dive header:', currentDive ? currentDive.header : 'undefined');
+
+                    if (!currentDive || !currentDive.header) {
+                        throw new Error('Current dive or header is undefined');
+                    }
+
+                    currentDive.samples = parseSamples(bodyHex, currentDive.header, false);
+
+                    if (currentDive.samples.length === 0) {
+                        console.warn('No samples parsed - trying as direct data without sector offsets');
+                        console.log('Body hex preview (first 400 chars):', bodyHex.substring(0, 400));
+                        console.log('Header info:', JSON.stringify(currentDive.header, null, 2));
+
+                        // Try parsing as direct sample data (no sector offset)
+                        currentDive.samples = parseDirectSamples(bodyHex, currentDive.header);
+                        console.log(`Direct parse found ${currentDive.samples.length} samples`);
+                    }
+
+                    // Update dive in IndexedDB
+                    await diveStorage.updateDive(currentDive);
+
+                    console.log(`Parsed ${currentDive.samples.length} samples for dive #${currentDive.header.logNumber}`);
+
+                    // Hide loading UI
+                    document.getElementById('historyLoading').style.display = 'none';
+
+                    // Show current dive's profile
+                    displayDive(currentDiveIndex);
+
+                } catch (error) {
+                    console.error('Error processing dive profile:', error);
+                    log('Error processing dive profile: ' + error.message, 'log-err');
+                    document.getElementById('historyLoadingStatus').innerText = 'Error processing dive profile';
+                    document.getElementById('historyLoading').style.display = 'none';
+                }
+            }
+
+            // =========================================================================
+            // VISUALIZATION
+            // =========================================================================
+
+            /**
+             * Shows dive list without profiles (header-only mode)
+             * Displays dive list with download buttons for each dive
+             */
+            function showDiveListOnly() {
+                if (cachedDives.length === 0) {
+                    log('No dives found in cache.', 'warn');
+                    return;
+                }
+
+                // Show viewer UI
+                document.getElementById('historyEmpty').style.display = 'none';
+                document.getElementById('historyLoading').style.display = 'none';
+                document.getElementById('historyViewer').style.display = 'block';
+
+                // Show first dive (will show download button since no samples loaded)
+                currentDiveIndex = 0;
+                displayDive(currentDiveIndex);
+            }
+
+            /**
+             * Shows dive viewer (checks each dive for loaded profiles)
+             */
+            function showHistoryViewer() {
+                if (cachedDives.length === 0) {
+                    log('No dives found in cache.', 'warn');
+                    return;
+                }
+
+                // Show viewer UI
+                document.getElementById('historyEmpty').style.display = 'none';
+                document.getElementById('historyLoading').style.display = 'none';
+                document.getElementById('historyViewer').style.display = 'block';
+
+                // Display the current dive (will show profile or download button)
+                displayDive(currentDiveIndex);
+            }
+
+            /**
+             * Displays a specific dive by index
+             * Updates metadata, navigation state, and renders SVG or download prompt
+             */
+            function displayDive(index) {
+                // Bounds check
+                if (index < 0 || index >= cachedDives.length) return;
+
+                currentDiveIndex = index;
+                const dive = cachedDives[index];
+                const h = dive.header;
+
+                // Update dive counter (show log number and total count)
+                document.getElementById('diveCounter').innerText =
+                    `Dive #${dive.logNumber} • ${cachedDives.length} dives total`;
+
+                // Update page indicator
+                document.getElementById('divePageIndicator').innerText =
+                    `Page ${index + 1} of ${cachedDives.length}`;
+
+                // Update meta summary
+                const dateStr = `${h.date.year}/${String(h.date.month).padStart(2, '0')}/${String(h.date.day).padStart(2, '0')} ${String(h.date.hour).padStart(2, '0')}:${String(h.date.minute).padStart(2, '0')}`;
+                document.getElementById('diveMetaSummary').innerText =
+                    `${dateStr} • ${h.maxDepthMeters.toFixed(1)}m • ${h.durationMinutes}min`;
+
+                // Update detailed metadata
+                document.getElementById('diveDateDisplay').innerText = dateStr;
+                document.getElementById('diveModeDisplay').innerText =
+                    ['Scuba', 'Gauge', 'Freedive'][h.mode] || 'Unknown';
+                document.getElementById('diveMaxDepthDisplay').innerText =
+                    `${h.maxDepthMeters.toFixed(1)}m`;
+                document.getElementById('diveDurationDisplay').innerText =
+                    `${h.durationMinutes}min`;
+                document.getElementById('diveMinTempDisplay').innerText =
+                    `${h.minTempCelsius.toFixed(1)}°C`;
+                document.getElementById('diveO2Display').innerText =
+                    `${h.oxygenPercent}%`;
+
+                // Update navigation button states
+                document.getElementById('btnPrevDive').disabled = (index === 0);
+                document.getElementById('btnNextDive').disabled = (index === cachedDives.length - 1);
+
+                // Check if samples are loaded for this dive
+                if (!dive.samples || dive.samples.length === 0) {
+                    // Show download prompt for this dive
+                    const container = document.getElementById('diveGraphContainer');
+                    container.innerHTML = `
+                        <div style="text-align:center; padding:40px; background:white; border-radius:10px;">
+                            <h3 style="margin-top:0;">Dive Profile</h3>
+                            <p style="color:#666; margin-bottom:20px;">Download this dive's profile to see the depth/time graph</p>
+                            <button class="btn-main" onclick="downloadCurrentDiveProfile()" style="max-width:300px; margin:20px auto;">
+                                Download Dive Profile
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    // Render SVG graph with rescan button
+                    renderDiveProfile('diveGraphContainer', dive.samples, dive.header, true);
+                }
+            }
+
+            /**
+             * Navigate to previous dive
+             */
+            function previousDive() {
+                if (currentDiveIndex > 0) {
+                    displayDive(currentDiveIndex - 1);
+                }
+            }
+
+            /**
+             * Navigate to next dive
+             */
+            function nextDive() {
+                if (currentDiveIndex < cachedDives.length - 1) {
+                    displayDive(currentDiveIndex + 1);
+                }
+            }
+
+            /**
+             * Renders SVG dive profile graph
+             */
+            function renderDiveProfile(containerId, samples, metadata, showRescanButton = false) {
+                const container = document.getElementById(containerId);
+
+                console.log(`Rendering dive #${metadata.logNumber}:`, {
+                    sampleCount: samples.length,
+                    firstSample: samples[0],
+                    lastSample: samples[samples.length - 1],
+                    headerMaxDepth: metadata.maxDepthMeters
+                });
+
+                // SVG dimensions
+                const width = 800;
+                const height = 500;
+                const padding = 60;
+                const graphWidth = width - 2 * padding;
+                const graphHeight = height - 2 * padding;
+
+                // Find data bounds
+                const maxDepthFromSamples = Math.max(...samples.map(s => s.depthMeters));
+                const maxTime = Math.max(...samples.map(s => s.timeSeconds));
+
+                // Use header's max depth if it's larger (samples might not capture exact max)
+                const maxDepth = Math.max(maxDepthFromSamples, metadata.maxDepthMeters);
+
+                console.log(`Depth bounds: samples=${maxDepthFromSamples.toFixed(2)}m, header=${metadata.maxDepthMeters.toFixed(2)}m, using=${maxDepth.toFixed(2)}m`);
+
+                // Start building SVG
+                let svg = `<svg width="100%" height="500" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg" style="background: var(--bg); font-family: var(--mono);">`;
+
+                // Title
+                const title = `Dive #${metadata.logNumber} - ${metadata.date.year}/${String(metadata.date.month).padStart(2, '0')}/${String(metadata.date.day).padStart(2, '0')} ${String(metadata.date.hour).padStart(2, '0')}:${String(metadata.date.minute).padStart(2, '0')}`;
+                svg += `<text x="${width / 2}" y="30" text-anchor="middle" font-size="16" font-weight="bold" fill="var(--text)">${title}</text>`;
+
+                // Draw grid - horizontal lines (depth)
+                const depthStep = Math.ceil(maxDepth / 5);
+                for (let d = 0; d <= maxDepth; d += depthStep) {
+                    const y = padding + (d / maxDepth) * graphHeight;
+
+                    // Grid line
+                    svg += `<line x1="${padding}" y1="${y}" x2="${padding + graphWidth}" y2="${y}" stroke="#e0e0e0" stroke-width="1"/>`;
+
+                    // Label
+                    svg += `<text x="${padding - 10}" y="${y + 4}" text-anchor="end" font-size="12" fill="#666">${d}m</text>`;
+                }
+
+                // Draw grid - vertical lines (time)
+                const timeStep = Math.ceil(maxTime / 10 / 60) * 60; // Round to minutes
+                for (let t = 0; t <= maxTime; t += timeStep) {
+                    const x = padding + (t / maxTime) * graphWidth;
+
+                    // Grid line
+                    svg += `<line x1="${x}" y1="${padding}" x2="${x}" y2="${padding + graphHeight}" stroke="#e0e0e0" stroke-width="1"/>`;
+
+                    // Label
+                    svg += `<text x="${x}" y="${height - padding + 20}" text-anchor="middle" font-size="12" fill="#666">${Math.floor(t / 60)}min</text>`;
+                }
+
+                // Draw axes border
+                svg += `<rect x="${padding}" y="${padding}" width="${graphWidth}" height="${graphHeight}" fill="none" stroke="#333" stroke-width="2"/>`;
+
+                // Plot dive profile as polyline
+                const points = samples.map(s => {
+                    const x = padding + (s.timeSeconds / maxTime) * graphWidth;
+                    const y = padding + (s.depthMeters / maxDepth) * graphHeight;
+                    return `${x},${y}`;
+                }).join(' ');
+
+                svg += `<polyline points="${points}" fill="none" stroke="var(--blue)" stroke-width="2"/>`;
+
+                // Add area fill for visual appeal
+                const areaPoints = `${padding},${padding} ${points} ${padding + graphWidth},${padding}`;
+                svg += `<polygon points="${areaPoints}" fill="var(--blue)" opacity="0.1"/>`;
+
+                // Draw stats at bottom
+                svg += `<text x="${padding}" y="${height - 10}" font-size="12" fill="var(--text)">Max Depth: ${metadata.maxDepthMeters.toFixed(1)}m</text>`;
+                svg += `<text x="${padding + 200}" y="${height - 10}" font-size="12" fill="var(--text)">Duration: ${metadata.durationMinutes}min</text>`;
+                svg += `<text x="${padding + 400}" y="${height - 10}" font-size="12" fill="var(--text)">Min Temp: ${metadata.minTempCelsius.toFixed(1)}°C</text>`;
+
+                svg += '</svg>';
+
+                // Insert SVG into container with optional rescan button
+                if (showRescanButton) {
+                    container.innerHTML = svg + `
+                        <div style="text-align:center; margin-top:15px;">
+                            <button class="btn-main" onclick="rescanCurrentDiveProfile()" style="background:#6c757d; max-width:250px; padding:10px;">
+                                ↻ Reload Dive Profile
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = svg;
+                }
+            }
+
+            /**
+             * Called when Dive History tab is opened
+             * Checks if data is cached, otherwise loads from IndexedDB
+             */
+            async function onDiveHistoryTabOpened() {
+                // Check in-memory cache first
+                if (cachedDives.length > 0) {
+                    // Data already loaded in this session
+                    showHistoryViewer();
+                    return;
+                }
+
+                // Check IndexedDB for persisted data
+                try {
+                    const hasDives = await diveStorage.hasDives();
+
+                    if (hasDives) {
+                        // Load from IndexedDB
+                        document.getElementById('historyLoading').style.display = 'block';
+                        document.getElementById('historyLoadingStatus').innerText = 'Loading dive history...';
+
+                        cachedDives = await diveStorage.getDives();
+
+                        // Sort dives by date (descending, most recent first)
+                        cachedDives.sort((a, b) => {
+                            const dateA = new Date(a.header.date.year, a.header.date.month - 1, a.header.date.day, a.header.date.hour, a.header.date.minute);
+                            const dateB = new Date(b.header.date.year, b.header.date.month - 1, b.header.date.day, b.header.date.hour, b.header.date.minute);
+                            return dateB - dateA; // Most recent first
+                        });
+
+                        console.log(`Loaded ${cachedDives.length} dives from IndexedDB`);
+
+                        document.getElementById('historyLoading').style.display = 'none';
+
+                        // Show viewer (each dive will show download button if samples not loaded)
+                        showHistoryViewer();
+                    } else {
+                        // No data, show empty state
+                        document.getElementById('historyEmpty').style.display = 'block';
+                        document.getElementById('historyLoading').style.display = 'none';
+                        document.getElementById('historyViewer').style.display = 'none';
+                    }
+                } catch (error) {
+                    console.error('Error loading dives from storage:', error);
+                    log('Error loading dive history: ' + error.message, 'log-err');
+
+                    // Show empty state on error
+                    document.getElementById('historyEmpty').style.display = 'block';
+                    document.getElementById('historyLoading').style.display = 'none';
+                    document.getElementById('historyViewer').style.display = 'none';
+                }
             }
         </script>
     </body>

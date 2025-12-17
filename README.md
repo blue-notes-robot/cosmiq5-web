@@ -28,10 +28,17 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 
 ### **3\. Features**
 
-* **General:** Set Time/Date format, Syc Time, Units (Metric/Imperial), Backlight intensity, Screen Timeout, and Power-Saving (Eco) mode.  
-* **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).  
-* **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.  
-* **Freedive:** Configure Max Time and 6 distinct Depth Alarms.  
+* **General:** Set Time/Date format, Sync Time, Units (Metric/Imperial), Backlight intensity, Screen Timeout, and Power-Saving (Eco) mode.
+* **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).
+* **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.
+* **Freedive:** Configure Max Time and 6 distinct Depth Alarms.
+* **Dive History:** View and download your dive logs with detailed profiles:
+  * Fast header-only scanning to see dive list (date, depth, duration)
+  * On-demand individual dive profile downloads (prevents browser crashes)
+  * Interactive depth/time charts for each dive
+  * Persistent storage in IndexedDB (survives browser refresh)
+  * Sort by date (most recent first)
+  * Navigate through all dives with Previous/Next buttons
 * **Diagnostics:** A "Byte Hunter" tab allows you to see the raw data packets coming from the device.
 
 ## **⚠️ Important Safety Warning**
@@ -40,8 +47,8 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 
 Diving involves significant risks, including decompression sickness, oxygen toxicity, and drowning.
 
-1. **ALWAYS** verify your settings on the physical device screen before entering the water.  
-2. **NEVER** rely solely on this software to configure life-safety parameters.  
+1. **ALWAYS** verify your settings on the physical device screen before entering the water.
+2. **NEVER** rely solely on this software to configure life-safety parameters.
 3. The authors and the AI assistant accept **NO RESPONSIBILITY** for malfunctions, incorrect settings, or any safety incidents resulting from the use of this tool.
 
 *Dive safe. Always carry a backup.*
