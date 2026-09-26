@@ -388,6 +388,8 @@
             <h1>Cosmiq 5 Manager</h1>
             <div id="status" class="status">Disconnected</div>
         </header>
+        <div id="deviceInfo" style="display: none; font-size: 13px; color: #555; margin: -6px 0 12px 0"></div>
+        <div id="modelNotice" class="warning-box" style="font-size: 13px; margin: 0 0 12px 0"></div>
 
         <div id="bleNotice" class="warning-box" style="font-size: 13px; margin: 0 0 12px 0"></div>
         <button id="connectBtn" class="btn-main" onclick="connect()">
@@ -572,16 +574,23 @@
             <div id="env" class="section">
                 <div class="card">
                     <h3>Diving Environment</h3>
-                    <span class="label">Water / Altitude Mode</span>
-                    <div class="grid" id="envGroup">
-                        <button class="btn-opt" id="env0" onclick="setEnv(0)">
-                            Normal / Sea
+                    <span class="label">High Salinity</span>
+                    <div class="grid" id="saltGroup">
+                        <button class="btn-opt" id="salt0" onclick="setEnv('salt', 0)">
+                            Off
                         </button>
-                        <button class="btn-opt" id="env1" onclick="setEnv(1)">
-                            High Salinity
+                        <button class="btn-opt" id="salt1" onclick="setEnv('salt', 1)">
+                            On
                         </button>
-                        <button class="btn-opt" id="env2" onclick="setEnv(2)">
-                            Altitude &gt;300m
+                    </div>
+                    <div style="margin-top: 15px"></div>
+                    <span class="label">Altitude</span>
+                    <div class="grid" id="altGroup">
+                        <button class="btn-opt" id="alt0" onclick="setEnv('alt', 0)">
+                            0 - 300 m
+                        </button>
+                        <button class="btn-opt" id="alt1" onclick="setEnv('alt', 1)">
+                            Above 300 m
                         </button>
                     </div>
                     <div id="salinityWarn" class="warning-box">
@@ -636,7 +645,7 @@
                             oninput="upd('ppo2Val', this.value)"
                         />
                         <span class="val" id="ppo2Val">1.4</span>
-                        <button class="btn-set" onclick="setPPO2()">Set</button>
+                        <button class="btn-set" id="ppo2Btn" onclick="setPPO2()">Set</button>
                     </div>
                 </div>
 
@@ -669,7 +678,7 @@
                     </div>
                     <div class="row">
                         <span style="font-size: 13px; flex: 1">Time (min)</span>
-                        <input type="number" id="scubaTime" placeholder="--" />
+                        <input type="number" id="scubaTime" placeholder="--" min="10" max="120" step="10" />
                         <button class="btn-set" onclick="setScubaTime()">
                             Set
                         </button>
@@ -806,7 +815,8 @@
             let txQueue = Promise.resolve(); // serialises all GATT writes
 
             // Global State for Bitmasked settings
-            let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
+            let sysState = { bl: 5, eco: true, salt: 0, alt: 0 }; // Default BL=3 (5), Eco=On
+            let device = null; // { fw, version, model, g5, count } from $58 / $5B
 
             // Screen timeout: the device takes and reports plain seconds
             // (official app: SCREEN_TIME_OUT_VALUE sent as-is with 0x2A).
@@ -909,6 +919,8 @@
             }
             function onDisc() {
                 txChar = rxChar = null;
+                device = null;
+                showDeviceInfo();
                 setBusy(false);
                 document.getElementById("status").innerText = "Disconnected";
                 document.getElementById("status").classList.remove("connected");
@@ -955,15 +967,20 @@
                     updateHunter();
 
                     // Parsing Logic
+                    if (cmd === "58") {
+                        const fw = parseInt(clean.substr(6, 2), 16);
+                        if (!isNaN(fw)) setDevice(fw);
+                    }
+
                     if (cmd === "5F") {
                         // System: Backlight, Eco, Environment
+                        // bit 0 = high salinity, bit 1 = altitude > 300 m (independent)
                         let env = parseInt(clean.substr(8, 2), 16);
-                        if (!isNaN(env) && env <= 2) {
-                            highlightBtn("envGroup", "env" + env);
-                            document.getElementById(
-                                "salinityWarn",
-                            ).style.display = env === 1 ? "block" : "none";
-                            log("> Parsed Env: " + env);
+                        if (!isNaN(env) && env <= 3) {
+                            sysState.salt = env & 1;
+                            sysState.alt = (env >> 1) & 1;
+                            showEnv();
+                            log(`> Parsed Env: salinity ${sysState.salt ? "ON" : "OFF"}, altitude ${sysState.alt ? ">300 m" : "0-300 m"}`);
                         }
 
                         let raw = parseInt(clean.substr(10, 2), 16);
@@ -1025,7 +1042,14 @@
                     }
 
                     if (cmd === "5B") {
-                        // Scuba 2
+                        // Scuba 2: dive count (u16), timeout (u16 s), date display, units
+                        const count = parseInt(clean.substr(6, 4), 16);
+                        if (!isNaN(count) && device) {
+                            device.count = count;
+                            showDeviceInfo();
+                            log("> Parsed Dive Count: " + count);
+                        }
+
                         let timeOutVal = parseInt(clean.substr(12, 2), 16);
                         let timeoutKey = Object.keys(TIMEOUT_MAP).find(
                             (key) => TIMEOUT_MAP[key] === timeOutVal,
@@ -1127,8 +1151,8 @@
                     { id: "5F", desc: "System ($5F)" },
                     { id: "5C", desc: "Scuba 1 ($5C)" },
                     { id: "5B", desc: "Scuba 2 ($5B)" },
-                    { id: "5D", desc: "FD Depth ($5D)" },
-                    { id: "60", desc: "FD Time ($60)" },
+                    { id: "5D", desc: "FD alarms 1-2, FD time, safety, PPO2 ($5D)" },
+                    { id: "60", desc: "FD alarms 3-6 ($60)" },
                 ];
 
                 commands.forEach((c) => {
@@ -1196,7 +1220,74 @@
                     log("Busy downloading the logbook - settings are locked.", "log-err");
                     return false;
                 }
+                if (txChar && !device) {
+                    log("Device model not identified yet (no reply to $58) - settings are locked.", "log-err");
+                    return false;
+                }
                 return !!txChar;
+            }
+
+            // Feature availability by model / firmware, as in the Deepblu app
+            // (CosmiqSettingType.java). Freedive alarms use a different encoding
+            // before fw 1.6 and have no alarms 4-6 except on the Cosmiq 5 (G5);
+            // this page only implements the G5 layout.
+            const FEATURES = {
+                safety: { test: (d) => d.version >= 0.5, name: "Safety factor / PPO2" },
+                altitude: { test: (d) => d.version >= 0.8, name: "Altitude mode" },
+                salinity: { test: (d) => d.version >= 0.9, name: "High salinity" },
+                backlight: { test: (d) => d.version >= 1.5, name: "Backlight / power saving" },
+                freedive: { test: (d) => d.g5, name: "Freedive alarms" },
+            };
+            const FEATURE_CONTROLS = {
+                safety: "#safeGroup .btn-opt, #ppo2Btn",
+                altitude: "#altGroup .btn-opt",
+                salinity: "#saltGroup .btn-opt",
+                backlight: "#blGroup .btn-opt, #ecoGroup .btn-opt",
+                freedive: "#free button",
+            };
+            function supports(feature) {
+                if (!device) return false;
+                if (FEATURES[feature].test(device)) return true;
+                log(`${FEATURES[feature].name}: not supported on ${device.model} fw ${device.version} by this page - nothing written`, "log-err");
+                return false;
+            }
+            function setDevice(fw) {
+                const version = (fw & 0x3f) / 10;
+                device = { fw, version, model: CosmiqLogbook.modelName(fw), g5: fw >> 6 === 2, count: device && device.count };
+                log(`> Device: ${device.model}, firmware ${version}`);
+                showDeviceInfo();
+                applyFeatures();
+            }
+            function showDeviceInfo() {
+                const el = document.getElementById("deviceInfo");
+                if (!device) {
+                    el.style.display = "none";
+                    return;
+                }
+                let t = `${device.model} · firmware ${device.version}`;
+                if (device.count != null) t += ` · ${device.count} dive${device.count === 1 ? "" : "s"} in logbook`;
+                el.textContent = t;
+                el.style.display = "block";
+            }
+            // Disables controls for features this device does not have.
+            function applyFeatures() {
+                const notice = document.getElementById("modelNotice");
+                if (!device) {
+                    notice.style.display = "none";
+                    return;
+                }
+                const missing = [];
+                for (const [f, def] of Object.entries(FEATURES)) {
+                    const ok = def.test(device);
+                    if (!ok) missing.push(def.name);
+                    document.querySelectorAll(FEATURE_CONTROLS[f]).forEach((b) => {
+                        if (!ok) b.disabled = true;
+                    });
+                }
+                if (missing.length) {
+                    notice.textContent = `This page is made for the Cosmiq 5. On this ${device.model} (fw ${device.version}) these settings are locked: ${missing.join(", ")}.`;
+                    notice.style.display = "block";
+                } else notice.style.display = "none";
             }
 
             // prefix = command hex, valHex = payload hex. The checksum follows
@@ -1260,18 +1351,31 @@
                 );
             }
 
-            function setEnv(v) {
-                document
-                    .getElementById("envGroup")
-                    .querySelectorAll(".btn-opt")
-                    .forEach((b) => b.classList.remove("selected"));
-                document.getElementById("env" + v).classList.add("selected");
-
+            function showEnv() {
+                highlightBtn("saltGroup", "salt" + sysState.salt);
+                highlightBtn("altGroup", "alt" + sysState.alt);
                 document.getElementById("salinityWarn").style.display =
-                    v === 1 ? "block" : "none";
+                    sysState.salt ? "block" : "none";
+            }
 
-                let h = "0" + v;
-                sendCalcSum("30", 208, "000" + v, "04", "Set Environment " + v);
+            // 0x30 carries both flags (bit 0 salinity, bit 1 altitude), so the
+            // other flag is read fresh from the device and sent back unchanged.
+            async function setEnv(kind, v) {
+                if (!canWrite() || !supports(kind === "salt" ? "salinity" : "altitude")) return;
+                const pkt = await refresh("5F");
+                const cur = pkt ? parseInt(pkt.substr(8, 2), 16) : NaN;
+                if (isNaN(cur) || cur > 3) {
+                    log("Could not read the current environment setting - nothing written", "log-err");
+                    return;
+                }
+                let salt = cur & 1, alt = (cur >> 1) & 1;
+                if (kind === "salt") salt = v;
+                else alt = v;
+                Object.assign(sysState, { salt, alt });
+                showEnv();
+                const val = (alt << 1) | salt;
+                await sendCalcSum("30", 208, val.toString(16).padStart(4, "0"), "04",
+                    `Set Environment: salinity ${salt ? "ON" : "OFF"}, altitude ${alt ? ">300 m" : "0-300 m"}`);
                 verify("sys");
             }
 
@@ -1294,6 +1398,7 @@
             }
 
             function sendBLEcoPacket() {
+                if (!canWrite() || !supports("backlight")) return;
                 let blBits = sysState.bl;
                 let ecoFlag = sysState.eco ? 0x00 : 0x10;
                 let total = blBits | ecoFlag;
@@ -1303,6 +1408,7 @@
             }
 
             function setSafe(s, btn) {
+                if (!canWrite() || !supports("safety")) return;
                 highlightBtn("safeGroup", btn.id);
                 let valStr = "000" + s;
                 sendCalcSum("21", 223, valStr, "04", "Set Safety " + s);
@@ -1344,6 +1450,7 @@
             }
 
             function setPPO2() {
+                if (!canWrite() || !supports("safety")) return;
                 let v = parseFloat(document.getElementById("ppo2Range").value);
                 sendCalcSum(
                     "2d",
@@ -1383,6 +1490,10 @@
             function setScubaTime() {
                 const m = readInt("scubaTime", 10, 120, "Scuba time alarm");
                 if (m === null) return;
+                if (m % 10) {
+                    log("Scuba time alarm: use steps of 10 min (10, 20, ... 120), as in the Deepblu app", "log-err");
+                    return;
+                }
                 sendCalcSum(
                     "28",
                     216,
@@ -1397,7 +1508,7 @@
             // index (metres - 5), low byte = time index ((seconds - 30) / 5).
             // Alarm 3 is re-sent unchanged from a fresh read of block 0x60.
             async function setFdTime() {
-                if (!canWrite()) return;
+                if (!canWrite() || !supports("freedive")) return;
                 const s = Number(document.getElementById("fdTimeRange").value);
                 if (!Number.isInteger(s) || s < 30 || s > 600 || (s - 30) % 5) {
                     log("FD time: must be 30-600 s in steps of 5", "log-err");
@@ -1438,7 +1549,7 @@
             }
 
             async function setFdDepth(idx) {
-                if (!canWrite()) return;
+                if (!canWrite() || !supports("freedive")) return;
                 const m = readInt("fd" + idx, 5, 80, "Freedive depth alarm " + idx);
                 if (m === null) return;
                 let h = (m - 5).toString(16).padStart(2, "0");
@@ -1510,6 +1621,7 @@
                     .forEach((b) => {
                         if (!b.closest("#logbookExport")) b.disabled = busy;
                     });
+                if (!busy) applyFeatures();
             }
 
             async function downloadLogbook() {
@@ -1536,6 +1648,10 @@
                         stage.textContent = text;
                     }, (saved && saved.result.slotCache) || {});
                     logbookResult = result;
+                    if (device) {
+                        device.count = result.dives.length;
+                        showDeviceInfo();
+                    }
                     log(`Logbook: ${result.dives.length} dives in ${Math.round((Date.now() - t0) / 1000)} s ` +
                         `(${result.read} profiles downloaded, ${result.reused} reused from saved logbook)`, "log-info");
                     await saveLogbook(result);
