@@ -200,8 +200,20 @@
         }
     }
 
+    const toHex = (bytes) => bytes.map(hex2).join("");
+
+    // A slot's flash content only changes when a newer dive is written into it, which also adds a
+    // new header pointing at it. So the headers of the slot and of the dive stored in it identify
+    // the content: if both are unchanged, a previously verified copy is still valid.
+    function slotKey(raw, headers, j) {
+        const into = headers.findIndex((_, i) => i !== j && profileSlot(headers, i).slot === j);
+        return toHex(raw[j]) + (into >= 0 ? "|" + toHex(raw[into]) : "");
+    }
+
     // Full read-only logbook download. progress(text, fraction).
-    async function downloadLogbook(link, progress = () => {}) {
+    // slotCache: optional {key: {data, verified}} from a previous download; only slots whose
+    // content may have changed are read again. The returned result carries the updated cache.
+    async function downloadLogbook(link, progress = () => {}, slotCache = {}) {
         const fw = (await link.query(0x58))[0];
         const mac = await link.query(0x5a);
         const count = parseInt((await link.query(0x40)).map(hex2).join(""), 16) || 0;
@@ -213,14 +225,25 @@
             raw.push(h);
             headers.push(parseHeader(h));
         }
-        // Read every slot that holds written data, once each.
+        // Read every slot that holds written data, once each, reusing verified cached copies.
         const slots = new Map();
-        const needed = [...new Set(headers.map((_, i) => profileSlot(headers, i).slot).filter((s) => s >= 0))];
+        const newCache = {};
+        const needed = [...new Set(headers.map((_, i) => profileSlot(headers, i).slot).filter((s) => s >= 0))]
+            .filter((j) => headers[j].nsamples > 0);
+        const toRead = needed.filter((j) => {
+            const c = slotCache[slotKey(raw, headers, j)];
+            return !(c && c.verified && c.data.length === headers[j].nsamples * 4);
+        });
         let done = 0;
         for (const j of needed) {
-            progress(`Reading profile slot ${++done}/${needed.length}`, 0.3 + (0.7 * done) / needed.length);
-            const nbytes = headers[j].nsamples * 4;
-            if (nbytes) slots.set(j, await link.profile(j + 1, nbytes));
+            const key = slotKey(raw, headers, j);
+            if (!toRead.includes(j)) {
+                slots.set(j, slotCache[key]);
+            } else {
+                progress(`Reading profile ${++done}/${toRead.length}`, 0.3 + (0.7 * done) / Math.max(1, toRead.length));
+                slots.set(j, await link.profile(j + 1, headers[j].nsamples * 4));
+            }
+            newCache[key] = slots.get(j);
         }
         const dives = headers.map((hdr, i) => {
             const { slot, reason } = profileSlot(headers, i);
@@ -239,7 +262,7 @@
             return { index: i + 1, header: hdr, raw: raw[i], body, samples, status, verified };
         });
         progress("Done", 1);
-        return { device, dives };
+        return { device, dives, slotCache: newCache, reused: needed.length - toRead.length, read: toRead.length };
     }
 
     // ---- export ----

@@ -32,7 +32,7 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 * **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).  
 * **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.  
 * **Freedive:** Configure Max Time and 6 distinct Depth Alarms.  
-* **Logbook:** Download all dive logs (header + depth/temperature profile) with read-only commands and export them as **Subsurface XML** (File → Open in Subsurface), CSV or raw JSON.  
+* **Logbook:** Download all dive logs (header + depth/temperature profile) with read-only commands and export them as **Subsurface XML** (File → Open in Subsurface), CSV or raw JSON. Tap a dive to see its depth/temperature profile. The logbook is saved in your browser, so it can be viewed and exported later without connecting, and later downloads only read new profiles.  
 * **Diagnostics:** A "Byte Hunter" tab allows you to see the raw data packets coming from the device.
 
 ### **4\. About the logbook (firmware bug)**
