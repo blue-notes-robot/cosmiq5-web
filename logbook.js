@@ -314,7 +314,7 @@
         })) }, null, 1);
     }
 
-    const api = { buildPacket, buildReadCommand, parseLine, LineAssembler, parseHeader, parseSamples, profileSlot,
+    const api = { buildPacket, buildReadCommand, parseLine, LineAssembler, modelName, parseHeader, parseSamples, profileSlot,
         stripErased, CosmiqLink, downloadLogbook, toSubsurfaceXML, toCSV, toRawJSON, checksum };
     if (typeof module !== "undefined" && module.exports) module.exports = api;
     else root.CosmiqLogbook = api;

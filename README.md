@@ -29,7 +29,8 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 ### **3\. Features**
 
 * **General:** Set Time/Date format, Syc Time, Units (Metric/Imperial), Backlight intensity, Screen Timeout, and Power-Saving (Eco) mode.  
-* **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).  
+* **Device info:** Model, firmware version and the number of dives in the logbook are shown after connecting. Settings the connected model/firmware does not support (per the Deepblu app) are locked; freedive alarms are only written on the Cosmiq 5.  
+* **Environment:** Configure High Altitude mode and/or High Salinity mode (Advanced).  
 * **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.  
 * **Freedive:** Configure Max Time and 6 distinct Depth Alarms.  
 * **Logbook:** Download all dive logs (header + depth/temperature profile) with read-only commands and export them as **Subsurface XML** (File → Open in Subsurface), CSV or raw JSON. Tap a dive to see its depth/temperature profile. The logbook is saved in your browser, so it can be viewed and exported later without connecting, and later downloads only read new profiles.  
