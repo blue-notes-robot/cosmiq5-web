@@ -39,9 +39,16 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 
 The page has no external dependencies, and Bluetooth talks to the dive computer directly, so no internet is needed once the page is open.
 
-* **Before the trip, open the [hosted page](https://blue-notes-robot.github.io/cosmiq5-web/) once while online.** It is then cached by the browser and opens again without internet. The log at the bottom shows *"Offline ready"* when this worked. Updates are picked up automatically the next time you are online.
-* **Android / PC:** in Chrome or Edge you can also *Install* the page (menu → *Install app* / *Add to Home screen*) to get an app icon.
-* **iPhone (Bluefy):** open the page once while online and check for the *"Offline ready"* message. If Bluefy doesn't show it, keep the tab open instead of reloading it while offline.
+* **PC / Mac / Android (Chrome or Edge):** before the trip, open the [hosted page](https://blue-notes-robot.github.io/cosmiq5-web/) once while online.
+  * The log at the bottom shows *"Offline ready"* once the page is cached.
+  * It then opens without internet at the same address. Keep the trailing `/`: `…/cosmiq5-web/`.
+  * You can also *Install* it (menu → *Install app* / *Add to Home screen*) to get an app icon.
+  * Updates are picked up automatically the next time you are online.
+* **iPhone (Bluefy):** iOS does not allow Bluefy to cache web pages for offline use.
+  * Open the page before you lose internet and **keep the tab open**; once loaded, everything, including Bluetooth and the logbook download, works offline.
+  * If iOS closes the tab, it can only be reopened with internet. The dive computer keeps its logs, so you can also download them after the trip.
+* **Local copy:** you can also download `index.html` and `logbook.js` into the same folder and open `index.html` in Chrome or Edge. This works offline without caching.
+  * The saved logbook is stored per address, so logs saved in a local copy do not appear on the hosted page (and vice versa).
 * Downloaded dive logs are saved in the browser, so **View saved logbook** shows and exports them later, also without the dive computer.
 
 ### **5\. About the logbook (firmware bug)**
