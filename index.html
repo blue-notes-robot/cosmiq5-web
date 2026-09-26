@@ -75,6 +75,8 @@
 
             .tabs {
                 display: flex;
+                flex-wrap: wrap;
+                gap: 2px;
                 background: white;
                 padding: 5px;
                 border-radius: 10px;
@@ -82,7 +84,7 @@
                 box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
             }
             .tab {
-                flex: 1;
+                flex: 1 1 80px;
                 padding: 10px;
                 background: none;
                 color: #6c757d;
@@ -282,6 +284,58 @@
                 background: var(--blue);
                 color: white;
             }
+
+            /* Logbook */
+            .progress {
+                position: relative;
+                height: 22px;
+                background: #f1f3f5;
+                border-radius: 6px;
+                overflow: hidden;
+            }
+            .progress-bar {
+                height: 100%;
+                width: 0;
+                background: #9fd8ae;
+                transition: width 0.2s;
+            }
+            .progress-label {
+                position: absolute;
+                inset: 0;
+                font-size: 11px;
+                line-height: 22px;
+                text-align: center;
+                color: #495057;
+            }
+            .dive-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 12px;
+            }
+            .dive-table th,
+            .dive-table td {
+                padding: 5px 4px;
+                border-bottom: 1px solid #eee;
+                text-align: left;
+                white-space: nowrap;
+            }
+            .dive-table td.num {
+                text-align: right;
+                font-family: var(--mono);
+            }
+            .st-ok {
+                color: var(--green);
+            }
+            .st-part {
+                color: #b8860b;
+            }
+            .st-none {
+                color: #adb5bd;
+            }
+            button:disabled {
+                opacity: 0.5;
+                cursor: not-allowed;
+            }
         </style>
     </head>
     <body>
@@ -303,11 +357,12 @@
 
         <div id="app" style="display: none; margin-top: 20px">
             <div class="tabs">
-                <button class="tab active" onclick="tab('gen')">General</button>
-                <button class="tab" onclick="tab('env')">Environment</button>
-                <button class="tab" onclick="tab('scuba')">Scuba</button>
-                <button class="tab" onclick="tab('free')">Freedive</button>
-                <button class="tab" onclick="tab('hunter')">Diagnostics</button>
+                <button class="tab active" onclick="tab('gen', this)">General</button>
+                <button class="tab" onclick="tab('env', this)">Environment</button>
+                <button class="tab" onclick="tab('scuba', this)">Scuba</button>
+                <button class="tab" onclick="tab('free', this)">Freedive</button>
+                <button class="tab" onclick="tab('logbook', this)">Logbook</button>
+                <button class="tab" onclick="tab('hunter', this)">Diagnostics</button>
             </div>
 
             <div id="gen" class="section active">
@@ -592,6 +647,49 @@
                 </div>
             </div>
 
+            <div id="logbook" class="section">
+                <div class="card">
+                    <h3>Dive Logs</h3>
+                    <p style="font-size: 12px; color: #666; margin-top: 0">
+                        Downloads every dive header and profile using read-only
+                        commands. Takes about 1&ndash;2 minutes for a full
+                        logbook; keep the device in Bluetooth mode.
+                    </p>
+                    <button
+                        id="logbookBtn"
+                        class="btn-main"
+                        onclick="downloadLogbook()"
+                        style="background: var(--green)"
+                    >
+                        Download Logbook
+                    </button>
+                    <div id="logbookProgress" class="progress" style="display: none">
+                        <div id="logbookBar" class="progress-bar"></div>
+                        <div id="logbookStage" class="progress-label"></div>
+                    </div>
+                    <div id="logbookExport" class="grid" style="display: none; margin-top: 10px">
+                        <button class="btn-opt" onclick="exportLogbook('xml')">Subsurface XML</button>
+                        <button class="btn-opt" onclick="exportLogbook('csv')">CSV</button>
+                        <button class="btn-opt" onclick="exportLogbook('json')">Raw (JSON)</button>
+                    </div>
+                    <div id="logbookSummary" style="font-size: 12px; margin-top: 10px"></div>
+                </div>
+                <div id="logbookListCard" class="card" style="display: none">
+                    <h3>Dives</h3>
+                    <div style="overflow-x: auto">
+                        <table class="dive-table" id="logbookTable"></table>
+                    </div>
+                    <div id="logbookNote" class="warning-box" style="display: block; margin-top: 10px">
+                        This firmware stores profiles in a 256-sector ring but
+                        reads them back without wrapping, so the newest dives
+                        are only partly (or not) readable, and the oldest
+                        profiles were overwritten. Dives without a profile are
+                        still exported with date, duration, max depth and
+                        temperature.
+                    </div>
+                </div>
+            </div>
+
             <div id="hunter" class="section">
                 <div class="card">
                     <h3>Byte Hunter</h3>
@@ -629,10 +727,17 @@
 
         <div id="log">Waiting for connection...</div>
 
+        <script src="logbook.js"></script>
         <script>
             const SERVICE_UUID = "6e400001-b5a3-f393-e0a9-e50e24dcca9e";
+            const TX_UUID = "6e400002-b5a3-f393-e0a9-e50e24dcca9e"; // write
+            const RX_UUID = "6e400003-b5a3-f393-e0a9-e50e24dcca9e"; // notify
             let dev, txChar, rxChar;
             let memMap = {};
+            const rxLines = new CosmiqLogbook.LineAssembler();
+            let logbookLink = null; // set while a logbook download owns the link
+            let logbookResult = null;
+            let txQueue = Promise.resolve(); // serialises all GATT writes
 
             // Global State for Bitmasked settings
             let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
@@ -655,7 +760,7 @@
                 fdDiv.innerHTML += `<div class="row"><span style="font-size:11px; flex:1">${lbl}</span><input type="number" id="fd${i}" placeholder="--"><button class="btn-set" onclick="setFdDepth(${i})">Set</button></div>`;
             }
 
-            function tab(id) {
+            function tab(id, btn) {
                 document
                     .querySelectorAll(".section")
                     .forEach((e) => e.classList.remove("active"));
@@ -663,17 +768,22 @@
                     .querySelectorAll(".tab")
                     .forEach((e) => e.classList.remove("active"));
                 document.getElementById(id).classList.add("active");
-                event.target.classList.add("active");
+                btn.classList.add("active");
             }
             function upd(id, val) {
                 document.getElementById(id).innerText = val;
             }
 
+            // Log text is always inserted as text, never as HTML (it contains device data).
+            const MAX_LOG_LINES = 500;
             function log(m, type = "") {
                 console.log(m);
                 const el = document.getElementById("log");
-                let span = `<span class="${type}">${m}</span>`;
-                el.innerHTML += "\n" + span;
+                const span = document.createElement("span");
+                if (type) span.className = type;
+                span.textContent = "\n" + m;
+                el.appendChild(span);
+                while (el.childNodes.length > MAX_LOG_LINES) el.removeChild(el.firstChild);
                 el.scrollTop = el.scrollHeight;
             }
 
@@ -692,15 +802,10 @@
                     const server = await dev.gatt.connect();
                     const service =
                         await server.getPrimaryService(SERVICE_UUID);
-                    const chars = await service.getCharacteristics();
-                    for (const c of chars) {
-                        if (
-                            c.properties.write ||
-                            c.properties.writeWithoutResponse
-                        )
-                            txChar = c;
-                        if (c.properties.notify) rxChar = c;
-                    }
+                    txChar = await service.getCharacteristic(TX_UUID);
+                    rxChar = await service.getCharacteristic(RX_UUID);
+                    rxLines.reset();
+                    txQueue = Promise.resolve();
 
                     await rxChar.startNotifications();
                     rxChar.addEventListener(
@@ -729,6 +834,8 @@
                 if (dev && dev.gatt.connected) dev.gatt.disconnect();
             }
             function onDisc() {
+                txChar = rxChar = null;
+                setBusy(false);
                 document.getElementById("status").innerText = "Disconnected";
                 document.getElementById("status").classList.remove("connected");
                 document.getElementById("connectBtn").style.display = "block";
@@ -738,23 +845,38 @@
             }
 
             // RX Handler
+            // Notifications are not guaranteed to carry exactly one reply line:
+            // reassemble lines first, then validate each one.
             function handleRX(event) {
-                try {
-                    let dec = new TextDecoder("utf-8");
-                    let text = dec.decode(event.target.value);
-                    let clean = text.replace(/[^0-9A-Fa-f]/g, "").toUpperCase();
+                const text = new TextDecoder("utf-8").decode(event.target.value);
+                for (const line of rxLines.feed(text)) {
+                    if (logbookLink) logbookLink.onLine(line);
+                    else handleSettingLine(line);
+                }
+            }
 
-                    if (clean.startsWith("80")) {
+            function handleSettingLine(line) {
+                try {
+                    if (/^\$80/i.test(line)) {
                         log("!!! COMMAND REJECTED !!!", "log-err");
                         return;
                     }
+                    let pkt;
+                    try {
+                        pkt = CosmiqLogbook.parseLine(line);
+                    } catch (e) {
+                        log("RX dropped: " + e.message, "log-err");
+                        return;
+                    }
 
-                    log("RX: " + text.trim(), "log-rx");
+                    log("RX: " + line, "log-rx");
 
-                    if (clean.length < 4) return;
+                    let clean = pkt.text;
                     let cmd = clean.substr(0, 2);
 
                     memMap[cmd] = clean;
+                    memWaiters.filter((w) => w.cmd === cmd).forEach((w) => w.resolve(clean));
+                    memWaiters = memWaiters.filter((w) => w.cmd !== cmd);
                     updateHunter();
 
                     // Parsing Logic
@@ -947,29 +1069,62 @@
                 document.getElementById("hunterTable").innerHTML = html;
             }
 
+            const READ_QUERIES = {
+                "58": "#58a60200",
+                "5F": "#5f9f0200",
+                "5B": "#5ba30200",
+                "5C": "#5ca20200",
+                "5D": "#5da10200",
+                "60": "#609e0200",
+            };
+
             async function readAllSettings() {
-                const qs = [
-                    "#58a60200",
-                    "#5f9f0200",
-                    "#5ba30200",
-                    "#5ca20200",
-                    "#5da10200",
-                    "#609e0200",
-                ];
-                for (const q of qs) {
+                for (const q of Object.values(READ_QUERIES)) {
                     await sendStatic(q, "Read Config");
                     await new Promise((r) => setTimeout(r, 300));
                 }
             }
 
-            async function sendStatic(str, desc = "") {
-                if (!txChar) return;
-                let enc = new TextEncoder();
-                await txChar.writeValue(enc.encode(str + "\n"));
-                if (!desc) desc = str;
-                log(`<span class="log-tx">TX: ${desc}</span>`);
+            // Re-read one settings block and wait for its reply (null on timeout).
+            let memWaiters = [];
+            function refresh(cmd, timeoutMs = 1500) {
+                const p = new Promise((resolve) => {
+                    const w = { cmd, resolve };
+                    memWaiters.push(w);
+                    setTimeout(() => {
+                        memWaiters = memWaiters.filter((x) => x !== w);
+                        resolve(null);
+                    }, timeoutMs);
+                });
+                sendStatic(READ_QUERIES[cmd], "Read " + cmd);
+                return p;
             }
 
+            // All writes go through one queue: Web Bluetooth rejects a write
+            // while another GATT operation is still in progress.
+            function sendStatic(str, desc = "") {
+                const job = txQueue.then(async () => {
+                    if (!txChar) throw new Error("not connected");
+                    if (logbookLink) throw new Error("skipped, logbook download in progress");
+                    await txChar.writeValue(new TextEncoder().encode(str + "\n"));
+                    log("TX: " + (desc || str), "log-tx");
+                });
+                txQueue = job.catch((e) => log("TX failed: " + e.message, "log-err"));
+                return txQueue;
+            }
+
+            // Settings are only written while no logbook download is running.
+            function canWrite() {
+                if (logbookLink) {
+                    log("Busy downloading the logbook - settings are locked.", "log-err");
+                    return false;
+                }
+                return !!txChar;
+            }
+
+            // prefix = command hex, valHex = payload hex. The checksum follows
+            // (256 - (cmd + len + sum(payload))) % 256; targetSum (256 - cmd) is
+            // kept as a cross-check of the command constants.
             async function sendCalcSum(
                 prefix,
                 targetSum,
@@ -977,21 +1132,30 @@
                 lenHex = "02",
                 desc = "",
             ) {
-                let v = valHex.toLowerCase();
-                let p = prefix.toLowerCase();
-                let payloadBytes = [];
-                payloadBytes.push(parseInt(lenHex, 16));
-                for (let i = 0; i < v.length; i += 2)
-                    payloadBytes.push(parseInt(v.substr(i, 2), 16));
+                const v = String(valHex).toLowerCase();
+                const cmd = parseInt(prefix, 16);
+                if (!/^([0-9a-f]{2})+$/.test(v) || parseInt(lenHex, 16) !== v.length) {
+                    log(`Refusing to send ${desc}: invalid payload "${v}"`, "log-err");
+                    return;
+                }
+                if ((256 - cmd) !== targetSum) {
+                    log(`Refusing to send ${desc}: checksum constant mismatch`, "log-err");
+                    return;
+                }
+                if (!canWrite()) return;
+                const bytes = v.match(/../g).map((b) => parseInt(b, 16));
+                await sendStatic(CosmiqLogbook.buildPacket(cmd, bytes).trim(), desc);
+            }
 
-                let sum = payloadBytes.reduce((a, b) => a + b, 0);
-                let checkDec = (targetSum - sum) & 0xff;
-                let checkHex = checkDec
-                    .toString(16)
-                    .padStart(2, "0")
-                    .toLowerCase();
-
-                await sendStatic(`#${p}${checkHex}${lenHex}${v}`, desc);
+            // Reads an integer input and checks its range; logs and returns null if invalid.
+            function readInt(id, min, max, what) {
+                const raw = document.getElementById(id).value;
+                const v = Number(raw);
+                if (raw === "" || !Number.isInteger(v) || v < min || v > max) {
+                    log(`${what}: enter a whole number between ${min} and ${max}`, "log-err");
+                    return null;
+                }
+                return v;
             }
 
             // --- FUNCTIONS ---
@@ -1069,6 +1233,7 @@
             }
 
             function setMode(m, btn) {
+                if (!canWrite()) return;
                 highlightBtn("modeGroup", btn.id);
                 let c =
                     m === 0 ? "#2bd30200" : m === 2 ? "#2bd10202" : "#2bd20201";
@@ -1122,8 +1287,10 @@
                 verify("scuba2");
             }
 
+            // Ranges below match the Deepblu app's pickers (CosmiqSettingValue.java).
             function setScubaDepth() {
-                let m = parseInt(document.getElementById("scubaDepth").value);
+                const m = readInt("scubaDepth", 5, 50, "Scuba depth alarm");
+                if (m === null) return;
                 sendCalcSum(
                     "27",
                     217,
@@ -1134,7 +1301,8 @@
                 verify("scuba1");
             }
             function setScubaTime() {
-                let m = parseInt(document.getElementById("scubaTime").value);
+                const m = readInt("scubaTime", 10, 120, "Scuba time alarm");
+                if (m === null) return;
                 sendCalcSum(
                     "28",
                     216,
@@ -1145,12 +1313,22 @@
                 verify("scuba1");
             }
 
-            function setFdTime() {
-                let s = parseInt(document.getElementById("fdTimeRange").value);
-                sendCalcSum(
+            // Command 0x26 carries two values: high byte = freedive depth alarm 3
+            // index (metres - 5), low byte = time index ((seconds - 30) / 5).
+            // Alarm 3 is re-sent unchanged from a fresh read of block 0x60.
+            async function setFdTime() {
+                if (!canWrite()) return;
+                const s = Number(document.getElementById("fdTimeRange").value);
+                if (!Number.isInteger(s) || s < 30 || s > 600 || (s - 30) % 5) {
+                    log("FD time: must be 30-600 s in steps of 5", "log-err");
+                    return;
+                }
+                const alarm3 = await freshAlarmHex(3);
+                if (alarm3 === null) return;
+                await sendCalcSum(
                     "26",
                     218,
-                    "14" + ((s - 30) / 5).toString(16).padStart(2, "0"),
+                    alarm3 + ((s - 30) / 5).toString(16).padStart(2, "0"),
                     "04",
                     "Set FD Time " + s + "s",
                 );
@@ -1159,38 +1337,40 @@
                 }, 600);
             }
 
+            // Freedive depth alarms are written in pairs, so the partner alarm
+            // must be re-sent. Read it fresh from the device instead of trusting a
+            // cached (possibly missing or stale) reply.
+            const FD_ALARM_SOURCE = {
+                // alarm: [settings block, byte offset in payload]
+                1: ["5D", 1], 2: ["5D", 0], 3: ["60", 1],
+                4: ["60", 0], 5: ["60", 3], 6: ["60", 2],
+            };
+            async function freshAlarmHex(alarm) {
+                const [block, off] = FD_ALARM_SOURCE[alarm];
+                const pkt = await refresh(block);
+                const payload = pkt ? pkt.substr(6) : "";
+                const hex = payload.substr(off * 2, 2);
+                if (!/^[0-9A-F]{2}$/.test(hex)) {
+                    log(`Could not read current alarm ${alarm} - nothing written`, "log-err");
+                    return null;
+                }
+                return hex.toLowerCase();
+            }
+
             async function setFdDepth(idx) {
-                let m = parseInt(document.getElementById("fd" + idx).value);
+                if (!canWrite()) return;
+                const m = readInt("fd" + idx, 5, 80, "Freedive depth alarm " + idx);
+                if (m === null) return;
                 let h = (m - 5).toString(16).padStart(2, "0");
                 let pre = "25",
                     tgt = 219,
                     pay = "0a" + h;
 
-                const getHex = (targetIdx) => {
-                    let pkt, offset;
-                    if (targetIdx === 1) {
-                        pkt = memMap["5D"];
-                        offset = 2;
-                    } else if (targetIdx === 2) {
-                        pkt = memMap["5D"];
-                        offset = 0;
-                    } else if (targetIdx === 3) {
-                        pkt = memMap["60"];
-                        offset = 2;
-                    } else if (targetIdx === 4) {
-                        pkt = memMap["60"];
-                        offset = 0;
-                    } else if (targetIdx === 5) {
-                        pkt = memMap["60"];
-                        offset = 6;
-                    } else if (targetIdx === 6) {
-                        pkt = memMap["60"];
-                        offset = 4;
-                    }
-
-                    if (!pkt) return "00";
-                    return pkt.substr(6 + offset, 2);
-                };
+                // Pairs: 0x25 = (alarm 2, alarm 1), 0x31 = (4, 3), 0x32 = (6, 5), high byte first.
+                const partner = { 1: 2, 2: 1, 3: 4, 4: 3, 5: 6, 6: 5 }[idx];
+                const partnerHex = await freshAlarmHex(partner);
+                if (partnerHex === null) return;
+                const getHex = () => partnerHex;
 
                 switch (idx) {
                     case 1:
@@ -1240,6 +1420,103 @@
                             await sendStatic("#609e0200", "Verify FD3-6");
                         }, 200);
                 }, 300);
+            }
+
+            // --- LOGBOOK ---
+
+            function setBusy(busy) {
+                document
+                    .querySelectorAll("#app button.btn-set, #app .btn-opt, #logbookBtn")
+                    .forEach((b) => {
+                        if (!b.closest("#logbookExport")) b.disabled = busy;
+                    });
+            }
+
+            async function downloadLogbook() {
+                if (!txChar || logbookLink) return;
+                await txQueue; // let pending settings writes finish first
+                const bar = document.getElementById("logbookBar");
+                const stage = document.getElementById("logbookStage");
+                document.getElementById("logbookProgress").style.display = "block";
+                document.getElementById("logbookExport").style.display = "none";
+                setBusy(true);
+                const link = new CosmiqLogbook.CosmiqLink(
+                    (s) => txChar.writeValue(new TextEncoder().encode(s)),
+                    (m) => log(m, "log-err"),
+                );
+                logbookLink = link;
+                rxLines.reset();
+                const t0 = Date.now();
+                try {
+                    logbookResult = await CosmiqLogbook.downloadLogbook(link, (text, f) => {
+                        bar.style.width = Math.round(f * 100) + "%";
+                        stage.textContent = text;
+                    });
+                    log(`Logbook: ${logbookResult.dives.length} dives in ${Math.round((Date.now() - t0) / 1000)} s`, "log-info");
+                    renderLogbook(logbookResult);
+                    document.getElementById("logbookExport").style.display = "grid";
+                } catch (e) {
+                    log("Logbook download failed: " + e.message, "log-err");
+                    stage.textContent = "Failed: " + e.message;
+                } finally {
+                    logbookLink = null;
+                    rxLines.reset();
+                    setBusy(false);
+                }
+            }
+
+            function renderLogbook(res) {
+                const pad = (n) => String(n).padStart(2, "0");
+                const count = (p) => res.dives.filter((d) => d.status.startsWith(p)).length;
+                const unverified = res.dives.filter((d) => !d.verified).length;
+                const sum = document.getElementById("logbookSummary");
+                sum.textContent =
+                    `${res.device.model} fw ${res.device.version} — ${res.dives.length} dives: ` +
+                    `${count("complete") + count("recovered")} full profiles, ${count("partial")} partial, ` +
+                    `${res.dives.length - count("complete") - count("recovered") - count("partial")} header only` +
+                    (unverified ? ` (${unverified} not verified by a second read)` : "");
+
+                const t = document.getElementById("logbookTable");
+                t.textContent = "";
+                const head = t.insertRow();
+                for (const h of ["#", "Date", "Mode", "Time", "Max", "Profile"]) {
+                    const th = document.createElement("th");
+                    th.textContent = h;
+                    head.appendChild(th);
+                }
+                for (const d of res.dives) {
+                    const h = d.header;
+                    const r = t.insertRow();
+                    const cell = (txt, cls) => {
+                        const c = r.insertCell();
+                        c.textContent = txt;
+                        if (cls) c.className = cls;
+                    };
+                    const dur = h.mode === "freedive" ? `${h.divetime} s` : `${Math.round(h.divetime / 60)} min`;
+                    cell(h.logNumber, "num");
+                    cell(`${h.year}-${pad(h.month)}-${pad(h.day)} ${pad(h.hour)}:${pad(h.minute)}`);
+                    cell(h.mode);
+                    cell(dur, "num");
+                    cell(h.maxDepth.toFixed(1) + " m", "num");
+                    const ok = d.status === "complete" || d.status === "recovered";
+                    cell(ok ? `${d.samples.length} samples` : d.status,
+                        ok ? "st-ok" : d.status.startsWith("partial") ? "st-part" : "st-none");
+                }
+                document.getElementById("logbookListCard").style.display = "block";
+            }
+
+            function exportLogbook(kind) {
+                if (!logbookResult) return;
+                const stamp = new Date().toISOString().slice(0, 10);
+                const [data, type, ext] =
+                    kind === "xml" ? [CosmiqLogbook.toSubsurfaceXML(logbookResult), "application/xml", "xml"]
+                    : kind === "csv" ? [CosmiqLogbook.toCSV(logbookResult), "text/csv", "csv"]
+                    : [CosmiqLogbook.toRawJSON(logbookResult), "application/json", "json"];
+                const a = document.createElement("a");
+                a.href = URL.createObjectURL(new Blob([data], { type }));
+                a.download = `cosmiq-logbook-${stamp}.${ext}`;
+                a.click();
+                setTimeout(() => URL.revokeObjectURL(a.href), 1000);
             }
 
             function highlightBtn(grp, id) {

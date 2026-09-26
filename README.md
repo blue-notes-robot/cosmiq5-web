@@ -32,7 +32,19 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 * **Environment:** Configure High Altitude mode or High Salinity mode (Advanced).  
 * **Scuba:** Configure Air Mix (Nitrox), PPO2, Depth Alarms, Time Alarms, and Safety Factor.  
 * **Freedive:** Configure Max Time and 6 distinct Depth Alarms.  
+* **Logbook:** Download all dive logs (header + depth/temperature profile) with read-only commands and export them as **Subsurface XML** (File → Open in Subsurface), CSV or raw JSON.  
 * **Diagnostics:** A "Byte Hunter" tab allows you to see the raw data packets coming from the device.
+
+### **4\. About the logbook (firmware bug)**
+
+The Cosmiq firmware writes each dive profile to flash sector `start_sector % 256`, but reads it back from the unmodified `start_sector` stored in the dive header. Once a logbook passes sector 256:
+
+* newer dives read back as erased flash (`0xFFFF`, which Subsurface/libdivecomputer shows as 645 m / 6553 °C, see [subsurface#3548](https://github.com/subsurface/subsurface/issues/3548)),
+* and they physically overwrite the oldest dives.
+
+The Logbook tab works around this: a newer dive's profile is read through the old dive whose slot it overwrote. Profiles that no header points to cannot be read with the known commands; those dives are still exported with date, duration, max depth and temperature, and the table shows the status of every dive. Each profile is downloaded twice and only accepted when both copies match.
+
+`logbook.js` holds the protocol and export code (no build step; deploy it next to `index.html`). `node test/logbook.test.js <dump dir>` runs it against a simulated device built from captured headers/profiles.
 
 ## **⚠️ Important Safety Warning**
 
