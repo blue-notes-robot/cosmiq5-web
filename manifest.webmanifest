@@ -1,0 +1,13 @@
+{
+    "name": "Cosmiq 5 Manager",
+    "short_name": "Cosmiq 5",
+    "description": "Settings and logbook download for the Deepblu Cosmiq dive computer over Web Bluetooth.",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "background_color": "#f8f9fa",
+    "theme_color": "#007bff",
+    "icons": [
+        { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    ]
+}
