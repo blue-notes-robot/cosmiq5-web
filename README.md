@@ -35,7 +35,16 @@ This entire project was "vibecoded" with Gemini Pro 3\. The code was generated t
 * **Logbook:** Download all dive logs (header + depth/temperature profile) with read-only commands and export them as **Subsurface XML** (File → Open in Subsurface), CSV or raw JSON. Tap a dive to see its depth/temperature profile. The logbook is saved in your browser, so it can be viewed and exported later without connecting, and later downloads only read new profiles.  
 * **Diagnostics:** A "Byte Hunter" tab allows you to see the raw data packets coming from the device.
 
-### **4\. About the logbook (firmware bug)**
+### **4\. Offline use (e.g. on a liveaboard)**
+
+The page has no external dependencies, and Bluetooth talks to the dive computer directly, so no internet is needed once the page is open.
+
+* **Before the trip, open the [hosted page](https://blue-notes-robot.github.io/cosmiq5-web/) once while online.** It is then cached by the browser and opens again without internet. The log at the bottom shows *"Offline ready"* when this worked. Updates are picked up automatically the next time you are online.
+* **Android / PC:** in Chrome or Edge you can also *Install* the page (menu → *Install app* / *Add to Home screen*) to get an app icon.
+* **iPhone (Bluefy):** open the page once while online and check for the *"Offline ready"* message. If Bluefy doesn't show it, keep the tab open instead of reloading it while offline.
+* Downloaded dive logs are saved in the browser, so **View saved logbook** shows and exports them later, also without the dive computer.
+
+### **5\. About the logbook (firmware bug)**
 
 The Cosmiq firmware writes each dive profile to flash sector `start_sector % 256`, but reads it back from the unmodified `start_sector` stored in the dive header. Once a logbook passes sector 256:
 

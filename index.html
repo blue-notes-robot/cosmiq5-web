@@ -3,7 +3,13 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v70 (Dive Profile Viewer Added)</title>
+        <title>Cosmiq 5 Manager v71 (Offline Support Added)</title>
+        <link rel="manifest" href="manifest.webmanifest" />
+        <link rel="icon" href="icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="icon.svg" />
+        <meta name="theme-color" content="#007bff" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-title" content="Cosmiq 5" />
         <style>
             :root {
                 --blue: #007bff;
@@ -1762,6 +1768,21 @@
             }
             // Offer the saved logbook on page load.
             loadSavedLogbook().then(updateSavedButton);
+
+            // Offline support: cache the app so it opens without internet after one online visit.
+            // Not available for file:// pages or in browsers without service workers.
+            if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+                navigator.serviceWorker
+                    .register("sw.js")
+                    .then((reg) => {
+                        const ready = () => log("Offline ready: this page will also open without internet.", "log-info");
+                        if (reg.active) ready();
+                        else navigator.serviceWorker.addEventListener("controllerchange", ready, { once: true });
+                    })
+                    .catch((e) => log("Offline support unavailable in this browser: " + e.message));
+            } else {
+                log("Offline support unavailable in this browser (no service workers).");
+            }
 
             function verify(type) {
                 let cmd = "";
