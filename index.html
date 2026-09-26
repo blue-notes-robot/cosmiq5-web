@@ -1771,7 +1771,11 @@
 
             // Offline support: cache the app so it opens without internet after one online visit.
             // Not available for file:// pages or in browsers without service workers.
-            if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+            const keepTabTip = "Offline caching is not available in this browser (on iPhone, iOS does not allow it " +
+                "in Bluefy). Tip: open this page before going offline and keep the tab open.";
+            if (location.protocol === "file:") {
+                log("Opened as a local file: works without internet as long as logbook.js is in the same folder.", "log-info");
+            } else if ("serviceWorker" in navigator) {
                 navigator.serviceWorker
                     .register("sw.js")
                     .then((reg) => {
@@ -1779,9 +1783,9 @@
                         if (reg.active) ready();
                         else navigator.serviceWorker.addEventListener("controllerchange", ready, { once: true });
                     })
-                    .catch((e) => log("Offline support unavailable in this browser: " + e.message));
+                    .catch(() => log(keepTabTip, "log-info"));
             } else {
-                log("Offline support unavailable in this browser (no service workers).");
+                log(keepTabTip, "log-info");
             }
 
             function verify(type) {
