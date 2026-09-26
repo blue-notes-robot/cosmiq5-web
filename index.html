@@ -3,7 +3,7 @@
     <head>
         <meta charset="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Cosmiq 5 Manager v69 (Logbook Export Added)</title>
+        <title>Cosmiq 5 Manager v70 (Dive Profile Viewer Added)</title>
         <style>
             :root {
                 --blue: #007bff;
@@ -332,6 +332,45 @@
             .st-none {
                 color: #adb5bd;
             }
+            .dive-table tr.dive-row {
+                cursor: pointer;
+            }
+            .dive-table tr.dive-row:hover,
+            .dive-table tr.dive-row.current {
+                background: #e3f2fd;
+            }
+            .chart-nav {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                margin-bottom: 8px;
+            }
+            .chart-meta {
+                flex: 1;
+                text-align: center;
+                font-size: 12px;
+                color: #495057;
+            }
+            .btn-nav {
+                padding: 6px 10px;
+                background: #f1f3f5;
+                border-radius: 6px;
+                color: #495057;
+                font-size: 12px;
+            }
+            #logbookChart svg {
+                width: 100%;
+                height: auto;
+                display: block;
+                touch-action: none;
+            }
+            .chart-readout {
+                font-family: var(--mono);
+                font-size: 11px;
+                color: #495057;
+                text-align: center;
+                margin-top: 4px;
+            }
             button:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
@@ -346,6 +385,14 @@
 
         <button id="connectBtn" class="btn-main" onclick="connect()">
             Connect & Sync
+        </button>
+        <button
+            id="savedBtn"
+            class="btn-main btn-test"
+            onclick="enterOffline()"
+            style="display: none"
+        >
+            View saved logbook
         </button>
         <button
             id="disconnectBtn"
@@ -652,8 +699,10 @@
                     <h3>Dive Logs</h3>
                     <p style="font-size: 12px; color: #666; margin-top: 0">
                         Downloads every dive header and profile using read-only
-                        commands. Takes about 1&ndash;2 minutes for a full
-                        logbook; keep the device in Bluetooth mode.
+                        commands. The first download takes about 1&ndash;2
+                        minutes; afterwards only new profiles are read. The
+                        logbook is saved in this browser, so you can view and
+                        export it later without connecting.
                     </p>
                     <button
                         id="logbookBtn"
@@ -674,8 +723,18 @@
                     </div>
                     <div id="logbookSummary" style="font-size: 12px; margin-top: 10px"></div>
                 </div>
+                <div id="logbookChartCard" class="card" style="display: none">
+                    <h3 id="chartTitle">Dive</h3>
+                    <div class="chart-nav">
+                        <button class="btn-nav" id="chartPrev" onclick="showDive(chartIndex - 1)">&larr; Newer</button>
+                        <span id="chartMeta" class="chart-meta"></span>
+                        <button class="btn-nav" id="chartNext" onclick="showDive(chartIndex + 1)">Older &rarr;</button>
+                    </div>
+                    <div id="logbookChart"></div>
+                    <div id="chartReadout" class="chart-readout">&nbsp;</div>
+                </div>
                 <div id="logbookListCard" class="card" style="display: none">
-                    <h3>Dives</h3>
+                    <h3>Dives <span style="font-weight: 400; text-transform: none">(tap a dive to see its profile)</span></h3>
                     <div style="overflow-x: auto">
                         <table class="dive-table" id="logbookTable"></table>
                     </div>
@@ -822,6 +881,8 @@
                     document.getElementById("disconnectBtn").style.display =
                         "block";
                     document.getElementById("app").style.display = "block";
+                    document.getElementById("savedBtn").style.display = "none";
+                    setBusy(false); // may still be locked from the offline view
 
                     log("Reading settings...");
                     await readAllSettings();
@@ -842,6 +903,7 @@
                 document.getElementById("disconnectBtn").style.display = "none";
                 document.getElementById("app").style.display = "none";
                 log("Disconnected.");
+                loadSavedLogbook().then(updateSavedButton);
             }
 
             // RX Handler
@@ -1447,12 +1509,18 @@
                 logbookLink = link;
                 rxLines.reset();
                 const t0 = Date.now();
+                // Reuse verified profiles from the saved logbook. Cache keys contain the full dive
+                // headers, so profiles saved from a different device never match.
+                const saved = await loadSavedLogbook();
                 try {
-                    logbookResult = await CosmiqLogbook.downloadLogbook(link, (text, f) => {
+                    const result = await CosmiqLogbook.downloadLogbook(link, (text, f) => {
                         bar.style.width = Math.round(f * 100) + "%";
                         stage.textContent = text;
-                    });
-                    log(`Logbook: ${logbookResult.dives.length} dives in ${Math.round((Date.now() - t0) / 1000)} s`, "log-info");
+                    }, (saved && saved.result.slotCache) || {});
+                    logbookResult = result;
+                    log(`Logbook: ${result.dives.length} dives in ${Math.round((Date.now() - t0) / 1000)} s ` +
+                        `(${result.read} profiles downloaded, ${result.reused} reused from saved logbook)`, "log-info");
+                    await saveLogbook(result);
                     renderLogbook(logbookResult);
                     document.getElementById("logbookExport").style.display = "grid";
                 } catch (e) {
@@ -1484,9 +1552,12 @@
                     th.textContent = h;
                     head.appendChild(th);
                 }
-                for (const d of res.dives) {
+                for (const [idx, d] of res.dives.entries()) {
                     const h = d.header;
                     const r = t.insertRow();
+                    r.className = "dive-row";
+                    r.dataset.idx = idx;
+                    r.onclick = () => showDive(idx);
                     const cell = (txt, cls) => {
                         const c = r.insertCell();
                         c.textContent = txt;
@@ -1503,6 +1574,157 @@
                         ok ? "st-ok" : d.status.startsWith("partial") ? "st-part" : "st-none");
                 }
                 document.getElementById("logbookListCard").style.display = "block";
+                document.getElementById("logbookExport").style.display = "grid";
+                showDive(0);
+            }
+
+            // --- saved logbook (IndexedDB, this browser only) ---
+
+            function openDB() {
+                return new Promise((resolve, reject) => {
+                    const req = indexedDB.open("cosmiq5-web", 1);
+                    req.onupgradeneeded = () => req.result.createObjectStore("logbook");
+                    req.onsuccess = () => resolve(req.result);
+                    req.onerror = () => reject(req.error);
+                });
+            }
+
+            async function saveLogbook(result) {
+                try {
+                    const db = await openDB();
+                    await new Promise((resolve, reject) => {
+                        const tx = db.transaction("logbook", "readwrite");
+                        tx.objectStore("logbook").put({ savedAt: new Date().toISOString(), result }, "last");
+                        tx.oncomplete = resolve;
+                        tx.onerror = () => reject(tx.error);
+                    });
+                    updateSavedButton({ savedAt: new Date().toISOString(), result });
+                } catch (e) {
+                    log("Could not save the logbook in this browser: " + e.message, "log-err");
+                }
+            }
+
+            async function loadSavedLogbook() {
+                try {
+                    const db = await openDB();
+                    return await new Promise((resolve, reject) => {
+                        const req = db.transaction("logbook").objectStore("logbook").get("last");
+                        req.onsuccess = () => resolve(req.result || null);
+                        req.onerror = () => reject(req.error);
+                    });
+                } catch (e) {
+                    return null; // private mode or storage blocked: the page works without it
+                }
+            }
+
+            function updateSavedButton(saved) {
+                const b = document.getElementById("savedBtn");
+                if (!saved) {
+                    b.style.display = "none";
+                    return;
+                }
+                const when = new Date(saved.savedAt).toLocaleString();
+                b.textContent = `View saved logbook (${saved.result.dives.length} dives, ${when})`;
+                b.style.display = txChar ? "none" : "block";
+            }
+
+            // Show the saved logbook without a connection; settings stay disabled.
+            async function enterOffline() {
+                const saved = await loadSavedLogbook();
+                if (!saved) return;
+                logbookResult = saved.result;
+                document.getElementById("app").style.display = "block";
+                document.getElementById("savedBtn").style.display = "none";
+                document.getElementById("status").innerText = "Offline - saved logbook";
+                tab("logbook", document.querySelector('.tab[onclick*="logbook"]'));
+                setBusy(true);
+                renderLogbook(logbookResult);
+            }
+
+            // --- profile chart ---
+
+            let chartIndex = 0;
+
+            function showDive(idx) {
+                if (!logbookResult) return;
+                const dives = logbookResult.dives;
+                if (idx < 0 || idx >= dives.length) return;
+                chartIndex = idx;
+                const d = dives[idx];
+                const h = d.header;
+                const pad = (n) => String(n).padStart(2, "0");
+                document.getElementById("chartTitle").textContent =
+                    `Dive #${h.logNumber} - ${h.year}-${pad(h.month)}-${pad(h.day)} ${pad(h.hour)}:${pad(h.minute)}`;
+                const dur = h.mode === "freedive" ? `${h.divetime} s` : `${Math.round(h.divetime / 60)} min`;
+                document.getElementById("chartMeta").textContent =
+                    `${h.mode}, ${dur}, max ${h.maxDepth.toFixed(1)} m` + (h.minTemp < 100 ? `, ${h.minTemp.toFixed(1)} °C` : "");
+                document.getElementById("chartPrev").disabled = idx === 0;
+                document.getElementById("chartNext").disabled = idx === dives.length - 1;
+                document.querySelectorAll("#logbookTable tr.dive-row").forEach((r) =>
+                    r.classList.toggle("current", Number(r.dataset.idx) === idx));
+                drawChart(d);
+                document.getElementById("logbookChartCard").style.display = "block";
+            }
+
+            function drawChart(d) {
+                const el = document.getElementById("logbookChart");
+                const readout = document.getElementById("chartReadout");
+                const s = [{ time: 0, depth: 0, temp: null }, ...d.samples];
+                if (d.samples.length === 0) {
+                    el.innerHTML = `<div style="padding: 30px; text-align: center; color: #868e96; font-size: 13px">No profile: ${d.status}</div>`;
+                    readout.innerHTML = "&nbsp;";
+                    return;
+                }
+                const W = 600, H = 240, L = 40, R = 40, T = 12, B = 28;
+                const tMax = Math.max(s[s.length - 1].time, 1);
+                const dMax = Math.max(1, ...s.map((p) => p.depth)) * 1.1;
+                const temps = s.filter((p) => p.temp !== null).map((p) => p.temp);
+                const tpMin = Math.min(...temps) - 0.5, tpMax = Math.max(...temps) + 0.5;
+                const x = (t) => L + (t / tMax) * (W - L - R);
+                const y = (dep) => T + (Math.max(dep, 0) / dMax) * (H - T - B);
+                const yt = (tp) => T + (1 - (tp - tpMin) / (tpMax - tpMin || 1)) * (H - T - B);
+                const minutes = tMax >= 180;
+                const fmtT = (t) => (minutes ? `${Math.round(t / 60)}'` : `${Math.round(t)}s`);
+                let grid = "";
+                const dStep = dMax > 30 ? 10 : dMax > 12 ? 5 : dMax > 5 ? 2 : 1;
+                for (let v = 0; v <= dMax; v += dStep)
+                    grid += `<line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="#eef0f2"/>` +
+                        `<text x="${L - 6}" y="${y(v) + 4}" text-anchor="end">${v} m</text>`;
+                const tStep = minutes ? (tMax > 3600 ? 600 : 300) : (tMax > 60 ? 15 : 5);
+                for (let v = 0; v <= tMax; v += tStep)
+                    grid += `<text x="${x(v)}" y="${H - 8}" text-anchor="middle">${fmtT(v)}</text>`;
+                const path = s.map((p, i) => `${i ? "L" : "M"}${x(p.time).toFixed(1)},${y(p.depth).toFixed(1)}`).join("");
+                const area = path + `L${x(s[s.length - 1].time).toFixed(1)},${y(0)}Z`;
+                const tempPath = s.filter((p) => p.temp !== null)
+                    .map((p, i) => `${i ? "L" : "M"}${x(p.time).toFixed(1)},${yt(p.temp).toFixed(1)}`).join("");
+                el.innerHTML =
+                    `<svg viewBox="0 0 ${W} ${H}" font-size="10" fill="#868e96" role="img" aria-label="Depth profile">` +
+                    grid +
+                    `<path d="${area}" fill="rgba(0,123,255,0.12)" stroke="none"/>` +
+                    `<path d="${path}" fill="none" stroke="var(--blue)" stroke-width="1.8"/>` +
+                    (tempPath ? `<path d="${tempPath}" fill="none" stroke="#e8590c" stroke-width="1" stroke-dasharray="3 2"/>` +
+                        `<text x="${W - R + 6}" y="${yt(tpMax - 0.5) + 4}" fill="#e8590c">${(tpMax - 0.5).toFixed(1)}°</text>` +
+                        `<text x="${W - R + 6}" y="${yt(tpMin + 0.5) + 4}" fill="#e8590c">${(tpMin + 0.5).toFixed(1)}°</text>` : "") +
+                    `<line id="chartCursor" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="#adb5bd" visibility="hidden"/>` +
+                    `<rect x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent" id="chartHit"/>` +
+                    `</svg>`;
+                const svg = el.querySelector("svg");
+                const cursor = el.querySelector("#chartCursor");
+                const hit = (ev) => {
+                    const pt = ev.touches ? ev.touches[0] : ev;
+                    const box = svg.getBoundingClientRect();
+                    const t = ((pt.clientX - box.left) / box.width * W - L) / (W - L - R) * tMax;
+                    const p = s.reduce((a, b) => (Math.abs(b.time - t) < Math.abs(a.time - t) ? b : a));
+                    cursor.setAttribute("x1", x(p.time));
+                    cursor.setAttribute("x2", x(p.time));
+                    cursor.setAttribute("visibility", "visible");
+                    const mm = Math.floor(p.time / 60), ss = String(Math.round(p.time % 60)).padStart(2, "0");
+                    readout.textContent = `${mm}:${ss}  ${p.depth.toFixed(1)} m` + (p.temp !== null ? `  ${p.temp.toFixed(1)} °C` : "");
+                };
+                svg.addEventListener("mousemove", hit);
+                svg.addEventListener("touchmove", hit, { passive: true });
+                svg.addEventListener("mouseleave", () => { cursor.setAttribute("visibility", "hidden"); readout.innerHTML = "&nbsp;"; });
+                readout.innerHTML = "&nbsp;";
             }
 
             function exportLogbook(kind) {
@@ -1538,6 +1760,9 @@
                     );
                 }
             }
+            // Offer the saved logbook on page load.
+            loadSavedLogbook().then(updateSavedButton);
+
             function verify(type) {
                 let cmd = "";
                 if (type === "sys") cmd = "#5f9f0200";

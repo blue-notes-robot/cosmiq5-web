@@ -89,6 +89,27 @@ function device(line) {
     for (const d of res.dives) for (const s of d.samples) assert(s.depth < 150 && s.temp < 45, "garbage in dive " + d.index);
     const xml = L.toSubsurfaceXML(res);
     assert.strictEqual((xml.match(/<dive /g) || []).length, res.dives.length);
+    // Incremental: a second download with the cache must not read any profile again,
+    // and must produce the same dives.
+    const cmds = [];
+    const link2 = new L.CosmiqLink(async (s) => { cmds.push(s.substr(1, 2)); await write(s); });
+    link = link2;
+    const res2 = await L.downloadLogbook(link2, () => {}, JSON.parse(JSON.stringify(res.slotCache)));
+    assert.strictEqual(cmds.filter((c) => c === "43").length, 0, "cached slots must not be re-read");
+    assert.strictEqual(res2.reused, res.read);
+    assert.deepStrictEqual(res2.dives.map((d) => [d.status, d.samples.length]), res.dives.map((d) => [d.status, d.samples.length]));
+    // A slot whose content changed (new dive written into it) invalidates just that slot.
+    const cache3 = JSON.parse(JSON.stringify(res.slotCache));
+    const k = Object.keys(cache3)[0];
+    delete cache3[k];
+    cmds.length = 0;
+    const res3 = await L.downloadLogbook(link2, () => {}, cache3);
+    assert.strictEqual(res3.read, 1);
+    console.log(`incremental: ${res2.reused} slots reused, 0 re-read; with one stale slot: ${res3.read} re-read`);
+
+    // COSMIQ_DUMP=<file>: write the downloaded logbook as JSON (to seed the page for a local preview)
+    if (process.env.COSMIQ_DUMP) fs.writeFileSync(process.env.COSMIQ_DUMP, JSON.stringify(res));
+
     const tmp = require("os").tmpdir();
     fs.writeFileSync(path.join(tmp, "cosmiq-logbook-test.xml"), xml);
     fs.writeFileSync(path.join(tmp, "cosmiq-logbook-test.csv"), L.toCSV(res));
