@@ -389,6 +389,7 @@
             <div id="status" class="status">Disconnected</div>
         </header>
 
+        <div id="bleNotice" class="warning-box" style="font-size: 13px; margin: 0 0 12px 0"></div>
         <button id="connectBtn" class="btn-main" onclick="connect()">
             Connect & Sync
         </button>
@@ -854,6 +855,11 @@
 
             // Connection
             async function connect() {
+                if (!navigator.bluetooth) {
+                    checkBluetoothSupport();
+                    log("This browser does not support Web Bluetooth.", "log-err");
+                    return;
+                }
                 try {
                     log("Scanning...");
                     dev = await navigator.bluetooth.requestDevice({
@@ -1768,6 +1774,40 @@
             }
             // Offer the saved logbook on page load.
             loadSavedLogbook().then(updateSavedButton);
+
+            // Web Bluetooth support: explain instead of failing with a TypeError on Connect.
+            function checkBluetoothSupport() {
+                const notice = document.getElementById("bleNotice");
+                const show = (html) => {
+                    notice.innerHTML = html;
+                    notice.style.display = "block";
+                };
+                const ua = navigator.userAgent;
+                const iOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+                if (!navigator.bluetooth) {
+                    document.getElementById("connectBtn").disabled = true;
+                    if (iOS) {
+                        show("<strong>This browser does not support Bluetooth.</strong><br />" +
+                            "On iPhone and iPad, Safari, Chrome and all other browsers use Apple's engine, which has no Web Bluetooth. " +
+                            "Please open this page in <strong>Bluefy</strong> (free on the App Store) or <strong>WebBLE</strong>.");
+                    } else if (!window.isSecureContext) {
+                        show("<strong>Bluetooth needs a secure page.</strong><br />" +
+                            "Open the page via <code>https://</code> (or <code>localhost</code>) instead of this address.");
+                    } else {
+                        show("<strong>This browser does not support Bluetooth.</strong><br />" +
+                            "Please use <strong>Chrome</strong>, <strong>Edge</strong> or <strong>Opera</strong> on Windows, macOS, Linux or Android. " +
+                            "Firefox and Safari do not support Web Bluetooth.");
+                    }
+                    return;
+                }
+                if (navigator.bluetooth.getAvailability) {
+                    navigator.bluetooth.getAvailability().then((ok) => {
+                        if (!ok) show("<strong>Bluetooth seems to be off or missing.</strong><br />" +
+                            "Turn on Bluetooth (or plug in a Bluetooth adapter), then reload this page.");
+                    }).catch(() => {});
+                }
+            }
+            checkBluetoothSupport();
 
             // Offline support: cache the app so it opens without internet after one online visit.
             // Not available for file:// pages or in browsers without service workers.
