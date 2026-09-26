@@ -808,15 +808,16 @@
             // Global State for Bitmasked settings
             let sysState = { bl: 5, eco: true }; // Default BL=3 (5), Eco=On
 
-            // Map for Screen Timeout
+            // Screen timeout: the device takes and reports plain seconds
+            // (official app: SCREEN_TIME_OUT_VALUE sent as-is with 0x2A).
             const TIMEOUT_MAP = {
                 5: 5,
                 10: 10,
                 15: 15,
                 20: 20,
-                30: 1,
-                60: 2,
-                120: 3,
+                30: 30,
+                60: 60,
+                120: 120,
             };
 
             // UI Init
@@ -1045,6 +1046,8 @@
                                 1000,
                             );
                             log("> Parsed Timeout: " + timeoutKey + "s");
+                        } else if (!isNaN(timeOutVal)) {
+                            log("> Timeout on device: " + timeOutVal + "s (not a standard value - set it again)", "log-err");
                         }
 
                         let dMode = parseInt(clean.substr(14, 2), 16);
@@ -1318,7 +1321,10 @@
             function setTimeoutIndex() {
                 let val = parseInt(document.getElementById("timeoutSel").value);
                 let devVal = TIMEOUT_MAP[val];
-                if (devVal === undefined) devVal = 1;
+                if (devVal === undefined) {
+                    log("Set Timeout: unknown value " + val, "log-err");
+                    return;
+                }
 
                 let h = devVal.toString(16).padStart(4, "0");
                 sendCalcSum("2a", 214, h, "04", "Set Timeout " + val + "s");
