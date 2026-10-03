@@ -73,4 +73,4 @@ Diving involves significant risks, including decompression sickness, oxygen toxi
 2. **NEVER** rely solely on this software to configure life-safety parameters.  
 3. The authors and the AI assistant accept **NO RESPONSIBILITY** for malfunctions, incorrect settings, or any safety incidents resulting from the use of this tool.
 
-*Dive safe. Always carry a backup.*
+*Dive safe. Always carry a backup!*
